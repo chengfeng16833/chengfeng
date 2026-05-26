@@ -1,0 +1,1557 @@
+{
+  "schema": "starsavior.events.v1",
+  "source": {
+    "type": "user_screenshot",
+    "captured_at": "2026-05-21"
+  },
+  "events": [
+    {
+      "id": "training_direction",
+      "title": "训练的方向",
+      "aliases": [
+        "训练的方向性"
+      ],
+      "time": "三月上旬",
+      "kind": "fixed",
+      "category": "combo_relic_unlock",
+      "description": "This fixed event determines which combo relic pool appears on the next turn.",
+      "options": [
+        {
+          "index": 1,
+          "text": "对攻击有用的训练教科书",
+          "meaning": "下回合在力量 or 暴击 or 爆伤中选择装备",
+          "unlocks_relic_pool": [
+            "attack_power",
+            "crit_rate",
+            "crit_damage"
+          ],
+          "recommended_profiles": [
+            "power_focus"
+          ],
+          "notes": [
+            "打伤害角色优先选择力量。",
+            "当前暴击和爆伤技能不推荐。"
+          ]
+        },
+        {
+          "index": 2,
+          "text": "提高生存能力的训练教科书",
+          "meaning": "下回合在生命 or 防御 or 速度中选择装备",
+          "unlocks_relic_pool": [
+            "life",
+            "defense",
+            "speed"
+          ],
+          "recommended_profiles": [
+            "stamina_tank",
+            "durability_focus",
+            "protection_focus"
+          ],
+          "notes": [
+            "奶妈以及技能是生命加成的盾职推荐选择生命。"
+          ]
+        },
+        {
+          "index": 3,
+          "text": "为应对各种情况的训练教科书",
+          "meaning": "下回合在命中 or 命抗 or 吸血、最大韧性值、反击中选择装备",
+          "unlocks_relic_pool": [
+            "effect_accuracy",
+            "effect_resistance",
+            "life_steal",
+            "max_shield",
+            "counterattack"
+          ],
+          "recommended_profiles": [
+            "pvp_control",
+            "counter_build"
+          ],
+          "notes": [
+            "想兼顾 PVP 时需要人工确认具体角色需求。",
+            "暴击技能配合蕾娜，或反击技能配合抗伤角色，对付隐身单位有效，但需要凹。"
+          ]
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "power_focus",
+          "choose_option": 1,
+          "reason": "damage build wants the attack-power combo relic pool"
+        },
+        {
+          "profile": "stamina_tank",
+          "choose_option": 2,
+          "reason": "life-scaling and tank builds want the life/survival pool"
+        },
+        {
+          "profile": "durability_focus",
+          "choose_option": 2,
+          "reason": "survival-oriented builds want the life/defense/speed pool"
+        },
+        {
+          "profile": "protection_focus",
+          "choose_option": 2,
+          "reason": "protection-oriented builds want the survival pool"
+        }
+      ],
+      "status": "partially_confirmed"
+    },
+    {
+      "id": "free_time_march_mid",
+      "title": "自由时间",
+      "time": "三月中旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "咱们去吃个期间限定的甜点吧",
+          "costs": {
+            "old_coins": 50
+          },
+          "effects": {
+            "mood": [
+              1,
+              2
+            ],
+            "skill_points": 10
+          },
+          "items": []
+        },
+        {
+          "index": 2,
+          "text": "我们去看最新的电影吧",
+          "costs": {
+            "old_coins": 30
+          },
+          "effects": {
+            "potential_points": [
+              15,
+              30
+            ]
+          },
+          "items": [
+            "特别海报"
+          ],
+          "notes": [
+            "Sheet note says the poster is roughly worth 4 or 19 skill points, and may enable a later event worth about 25 more skill points, but the later event is not guaranteed."
+          ]
+        },
+        {
+          "index": 3,
+          "text": "拿个三明治去野餐吧",
+          "costs": {
+            "stamina": -20
+          },
+          "effects": {
+            "one_of_primary_stats": {
+              "stats": [
+                "power",
+                "life",
+                "stamina"
+              ],
+              "values": [
+                10,
+                20
+              ]
+            },
+            "one_of_secondary_stats": {
+              "stats": [
+                "accuracy",
+                "resistance"
+              ],
+              "values": [
+                5,
+                10
+              ]
+            }
+          },
+          "items": []
+        },
+        {
+          "index": 4,
+          "text": "今天就这样休息吧",
+          "costs": {},
+          "effects": {
+            "stamina": [
+              5,
+              10
+            ]
+          },
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default_safe",
+          "choose_option": 4,
+          "reason": "user note says personal habit is choosing option 4 to recover stamina"
+        },
+        {
+          "profile": "skill_point_farming",
+          "choose_option": 2,
+          "reason": "poster can be converted into more skill-point value if later event triggers"
+        }
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "rescue_group_supply",
+      "title": "拯救集团供应",
+      "time": "三月中旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "让我们选择食物。",
+          "effects": {
+            "power": 10
+          },
+          "items": [
+            "满意度问卷"
+          ]
+        },
+        {
+          "index": 2,
+          "text": "让我们选择一个蓬松的枕头",
+          "effects": {
+            "life": 10
+          },
+          "items": [
+            "满意度问卷"
+          ]
+        },
+        {
+          "index": 3,
+          "text": "让我们选择辛辣食物",
+          "effects": {
+            "stamina": 10
+          },
+          "items": [
+            "满意度问卷"
+          ]
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "power_focus",
+          "choose_option": 1,
+          "reason": "power build wants power +10"
+        },
+        {
+          "profile": "stamina_tank",
+          "choose_option": 2,
+          "reason": "life-scaling build wants life +10"
+        },
+        {
+          "profile": "durability_focus",
+          "choose_option": 3,
+          "reason": "stamina/durability build can take stamina +10"
+        }
+      ],
+      "notes": [
+        "Screenshot note: choose based on character."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "mysterious_stone_statue",
+      "title": "神秘石像",
+      "time": "三月中旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "我向剑祈祷。",
+          "effects": {
+            "power": 20,
+            "life": -20
+          },
+          "items": [
+            "石像之剑"
+          ]
+        },
+        {
+          "index": 2,
+          "text": "为鲜花祈祷。",
+          "effects": {
+            "power": -20,
+            "life": 20
+          },
+          "items": [
+            "石像之花"
+          ]
+        },
+        {
+          "index": 3,
+          "text": "我不祈祷。",
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "power_focus",
+          "choose_option": 1,
+          "reason": "power build trades life for power"
+        },
+        {
+          "profile": "stamina_tank",
+          "choose_option": 2,
+          "reason": "life build trades power for life"
+        },
+        {
+          "profile": "safe_mode",
+          "choose_option": 3,
+          "reason": "avoid negative stat trade when the build is unclear"
+        }
+      ],
+      "notes": [
+        "Screenshot note: choose based on character."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "lisette_errand",
+      "title": "蓄塞特例程",
+      "aliases": [
+        "リセットの日課"
+      ],
+      "time": "四月下旬",
+      "kind": "fixed",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "我们来帮忙吧",
+          "costs": {
+            "stamina": -20
+          },
+          "effects": {
+            "one_of": [
+              {
+                "old_coins": 30
+              },
+              {
+                "buff": "商店打折",
+                "duration_turns": 1
+              },
+              {
+                "old_coins": 30,
+                "mood": 1
+              },
+              {
+                "buff": "商店打折",
+                "duration_turns": 1
+              }
+            ]
+          },
+          "notes": [
+            "Screenshot lists multiple possible outcomes after paying stamina."
+          ]
+        },
+        {
+          "index": 2,
+          "text": "我们稍等片刻",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "screenshot note says all Lisette events are recommended"
+        }
+      ],
+      "notes": [
+        "User screenshot note: 所有蓄塞特事件都推荐做."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "unknown_merchant_may_mid",
+      "title": "身份不明的商人",
+      "time": "五月中旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "有助于攻击的秘术书",
+          "costs": {
+            "old_coins": 30
+          },
+          "effects": {
+            "discount": {
+              "item": "攻击的技巧",
+              "values": [
+                10,
+                20
+              ],
+              "unit": "%"
+            },
+            "attack_increase": {
+              "value": 2,
+              "unit": "%",
+              "max_level": 1
+            }
+          }
+        },
+        {
+          "index": 2,
+          "text": "有助于生存的秘术书",
+          "costs": {
+            "old_coins": 30
+          },
+          "effects": {
+            "discount": {
+              "item": "生命的技巧",
+              "values": [
+                10,
+                20
+              ],
+              "unit": "%"
+            },
+            "life_increase": {
+              "value": 2,
+              "unit": "%",
+              "max_level": 1
+            }
+          }
+        },
+        {
+          "index": 3,
+          "text": "也有在任何情况下都能使用的秘术书吗？",
+          "costs": {
+            "old_coins": 50
+          },
+          "effects": {
+            "discount": {
+              "item": "速度的技巧",
+              "values": [
+                10,
+                20
+              ],
+              "unit": "%"
+            },
+            "speed_increase": {
+              "value": 2,
+              "unit": "%",
+              "max_level": 1
+            }
+          }
+        },
+        {
+          "index": 4,
+          "text": "什么也不需要",
+          "costs": {},
+          "effects": {
+            "discount": {
+              "item_one_of": [
+                "命中的技巧",
+                "命抗的技巧"
+              ],
+              "values": [
+                10
+              ],
+              "unit": "%"
+            },
+            "one_of": [
+              {
+                "accuracy_increase": {
+                  "value": 4,
+                  "unit": "%",
+                  "max_level": 1
+                }
+              },
+              {
+                "resistance_increase": {
+                  "value": 4,
+                  "unit": "%",
+                  "max_level": 1
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default",
+          "choose_option": 3,
+          "reason": "screenshot note recommends option 3 speed"
+        },
+        {
+          "profile": "power_focus",
+          "choose_option": 1,
+          "reason": "attack build can take attack book if overriding the default speed recommendation"
+        },
+        {
+          "profile": "stamina_tank",
+          "choose_option": 2,
+          "reason": "life build can take life book if overriding the default speed recommendation"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 推荐选3选项的速度."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "weapon_workshop_marketing",
+      "title": "武器工坊的营销策略",
+      "time": "五月中旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "花钱购买",
+          "costs": {
+            "old_coins": 50
+          },
+          "effects": {
+            "stamina": [
+              10,
+              15
+            ]
+          },
+          "items": [
+            "传说之剑的复制品"
+          ]
+        },
+        {
+          "index": 2,
+          "text": "寻找弱点进行攻击",
+          "requirements": {
+            "accuracy": 70
+          },
+          "effects": {
+            "mood": 1,
+            "power": 15
+          },
+          "items": [
+            "传说之剑的复制品"
+          ]
+        },
+        {
+          "index": 3,
+          "text": "用力量将其拔出",
+          "costs": {
+            "stamina": -20
+          },
+          "effects": {
+            "power": 20,
+            "buff": {
+              "name": "传说的救援者",
+              "duration_turns": 3,
+              "effect": "训练时获得的潜力点提升"
+            }
+          },
+          "items": [
+            "传说之剑的复制品"
+          ]
+        },
+        {
+          "index": 4,
+          "text": "直接路过",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "low_stamina",
+          "choose_option": 1,
+          "reason": "screenshot note says choose option 1 first when stamina is not full"
+        },
+        {
+          "profile": "mood_not_full_accuracy_met",
+          "choose_option": 2,
+          "reason": "screenshot note says choose option 2 if mood is not full and accuracy requirement is met"
+        },
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "option 3 is not recommended"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 体力没满优先选1；心情没满且满足命中条件选2；3选项不推荐."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "unexpected_discovery",
+      "title": "意外的发现",
+      "time": "五月中旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "虽然需要费点力气……还是挖一下吧！",
+          "costs": {
+            "stamina": -10
+          },
+          "outcomes": {
+            "success": {
+              "effects": {
+                "skill_points": 25
+              },
+              "items": [
+                "可疑的盒子"
+              ]
+            },
+            "failure": {
+              "effects": {},
+              "items": []
+            }
+          }
+        },
+        {
+          "index": 2,
+          "text": "没必要在这种地方浪费体力！",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "screenshot note says generally choose option 1 to spend 10 stamina and gamble"
+        },
+        {
+          "profile": "safe_low_stamina",
+          "choose_option": 2,
+          "reason": "avoid stamina gamble when stamina is too low"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 一般选1拿10体开赌，道具之后的事件如果触发可以换力量生命防御各+10."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "prototype_enhancement_potion",
+      "title": "试作强化药剂",
+      "time": "五月中旬",
+      "additional_times": [
+        "九月下旬"
+      ],
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "不祥地泛着红色的药剂",
+          "costs": {
+            "old_coins": 20
+          },
+          "outcomes": {
+            "success": {
+              "items": [
+                "空药瓶"
+              ],
+              "effects": {
+                "all_stats": 20
+              }
+            },
+            "failure": {
+              "items": [
+                "空药瓶"
+              ],
+              "effects": {
+                "stamina": -20,
+                "all_stats": -10,
+                "debuff": {
+                  "name": "魔力消耗",
+                  "duration_turns": 5,
+                  "effect": "训练时失败率大幅提高"
+                }
+              }
+            }
+          }
+        },
+        {
+          "index": 2,
+          "text": "散发冰冷蓝光的药剂",
+          "costs": {
+            "old_coins": 20
+          },
+          "outcomes": {
+            "success": {
+              "items": [
+                "空药瓶"
+              ],
+              "effects": {
+                "stamina": 10,
+                "mood": 1,
+                "buff": {
+                  "name": "戈尔迪乌斯之剑",
+                  "duration_turns": 5,
+                  "effect": "训练时失败率降低"
+                }
+              }
+            },
+            "failure": {
+              "items": [
+                "空药瓶"
+              ],
+              "effects": {
+                "stamina": -20,
+                "mood": -1
+              }
+            }
+          }
+        },
+        {
+          "index": 3,
+          "text": "发出耀眼黄色光芒的药剂",
+          "costs": {
+            "old_coins": 20
+          },
+          "outcomes": {
+            "success": {
+              "items": [
+                "空药瓶"
+              ],
+              "effects": {
+                "stamina": 10,
+                "old_coins": 30,
+                "skill_points": 30
+              }
+            },
+            "failure": {
+              "items": [
+                "空药瓶"
+              ],
+              "effects": {
+                "debuff": {
+                  "name": "严重低迷",
+                  "duration_turns": 5,
+                  "effect": "训练时失败率提高"
+                }
+              }
+            }
+          }
+        },
+        {
+          "index": 4,
+          "text": "旁边放着的普通饮料",
+          "costs": {},
+          "effects": {
+            "stamina": 10
+          },
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default_safe",
+          "choose_option": 4,
+          "reason": "screenshot note says generally do not gamble and choose option 4 to recover stamina"
+        },
+        {
+          "profile": "gamble",
+          "choose_option": 3,
+          "reason": "gambling route can high-roll skill points and coins, but failures are dangerous"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 一般不赌，选4选项回体力；赌了赢了起飞，输了就可以准备杀了."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "secret_hell_training",
+      "title": "秘密的地狱特训",
+      "time": "五月中旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "如何打好拳击机",
+          "costs": {
+            "old_coins": 20
+          },
+          "effects": {
+            "buff": {
+              "name": "克服限制",
+              "duration_turns": 3,
+              "effect": "训练获得力量提升"
+            }
+          },
+          "items": [
+            "力量特训认证书"
+          ]
+        },
+        {
+          "index": 2,
+          "text": "如何不疲倦地奔跑",
+          "costs": {
+            "old_coins": 20
+          },
+          "effects": {
+            "buff": {
+              "name": "鲁莽挑战",
+              "duration_turns": 3,
+              "effect": "训练获得生命提升"
+            }
+          },
+          "items": [
+            "生命特训认证书"
+          ]
+        },
+        {
+          "index": 3,
+          "text": "现在还不用",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "power_focus",
+          "choose_option": 1,
+          "reason": "power build wants training power gain buff"
+        },
+        {
+          "profile": "stamina_tank",
+          "choose_option": 2,
+          "reason": "life build wants training life gain buff"
+        },
+        {
+          "profile": "unknown",
+          "choose_option": 3,
+          "reason": "screenshot note says choose based on character"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 自己看角色选."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "lisette_temptation",
+      "title": "蓄塞特的诱惑",
+      "time": "六月下旬",
+      "kind": "fixed",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "干脆买下来吧",
+          "costs": {
+            "old_coins": 30
+          },
+          "effects": {
+            "one_of": [
+              {
+                "accuracy": 10,
+                "items": [
+                  "月光润唇膏小样"
+                ]
+              },
+              {
+                "resistance": 10,
+                "items": [
+                  "月光水小样"
+                ]
+              },
+              {
+                "accuracy": 5,
+                "resistance": 5,
+                "items": [
+                  "月光精华小样"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "text": "为旅途攒钱",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "screenshot note says all Lisette events are recommended"
+        }
+      ],
+      "notes": [
+        "User screenshot note: 所有蓄塞特事件都推荐做."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "maze_exploration",
+      "title": "迷宫探索",
+      "time": "七月中旬",
+      "kind": "fixed",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "让我们用钱来解决这个问题",
+          "costs": {
+            "old_coins": 50
+          },
+          "effects": {
+            "stamina": [
+              10,
+              15
+            ]
+          },
+          "items": [
+            "来历不明的遗物"
+          ],
+          "followup": [
+            {
+              "time": "九月下旬",
+              "effect": "can_exchange_for_old_coins_80"
+            },
+            {
+              "time": "一月下旬",
+              "effect": "can_exchange_for_two_of_five_stats_plus_20_and_mood_plus_1"
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "text": "如果自己驾驶起重机呢？",
+          "requirements": {
+            "accuracy": 90
+          },
+          "effects": {
+            "defense": [
+              15,
+              20
+            ],
+            "skill_points": 37
+          }
+        },
+        {
+          "index": 3,
+          "text": "我需要找条绕路",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "screenshot note says generally choose option 1 for coins-to-stamina and follow-up event value"
+        },
+        {
+          "profile": "accuracy_90_defense_need",
+          "choose_option": 2,
+          "reason": "choose only when accuracy requirement is met and defense/skill points are desired"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 一般选1选项花金币回体力，获得的道具后续可触发两个事件；九月下旬可以换80金币等于白嫖回体；一月下旬可以换五维其中两个+20和心情+1.",
+        "Screenshot note: 想达到选2条件大概率前期要多练命中训练，不推荐."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "ambush",
+      "title": "袭击",
+      "time": "七月下旬",
+      "kind": "fixed",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "让我们利用地形绕过他们",
+          "costs": {
+            "stamina": -20
+          },
+          "effects": {
+            "accuracy": 10,
+            "resistance": 10,
+            "skill_points": 50,
+            "discount": {
+              "item": "速度的感觉",
+              "value": 20,
+              "unit": "%"
+            },
+            "speed_increase": {
+              "value": 1,
+              "max_level": 5
+            }
+          }
+        },
+        {
+          "index": 2,
+          "text": "保持冷静，巩固防御",
+          "requirements": {
+            "defense": 175
+          },
+          "effects": {
+            "accuracy": 10,
+            "resistance": 10,
+            "skill_points": 50,
+            "mood": 1
+          }
+        },
+        {
+          "index": 3,
+          "text": "我们逃到楼上去吧",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "pvp_control",
+          "choose_option": 1,
+          "reason": "screenshot note strongly recommends option 1 for PvP speed minor-skill discount"
+        },
+        {
+          "profile": "defense_175_mood_not_full",
+          "choose_option": 2,
+          "reason": "choose option 2 when defense requirement is met and mood is not full"
+        },
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "option 1 has strong value if stamina pressure is acceptable"
+        },
+        {
+          "profile": "safe_low_stamina",
+          "choose_option": 3,
+          "reason": "avoid spending stamina when stamina is too low"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 如果想兼顾 pvp，非常推荐选1，拿速度小技能打折；虽然少20体，相当于少训练一回合，但是如果本来就要睡觉，压低体力可以赌睡觉大成功.",
+        "Screenshot note: 如果心情不满而且属性满足防御175的条件，可以选2回心情."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "sneak_attack_shrem",
+      "title": "突袭·史莱姆",
+      "time": "八月中旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "我们来清除黏液",
+          "requirements": {
+            "one_of": {
+              "accuracy": 100,
+              "resistance": 100
+            }
+          },
+          "effects": {
+            "power": 5,
+            "life": 5,
+            "defense": 5,
+            "skill_points": 25
+          }
+        },
+        {
+          "index": 2,
+          "text": "让我们一起协助疏散",
+          "costs": {
+            "stamina": -10
+          },
+          "effects": {
+            "old_coins": 30
+          }
+        },
+        {
+          "index": 3,
+          "text": "不要卷入其中",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "accuracy_or_resistance_100",
+          "choose_option": 1,
+          "reason": "choose option 1 if accuracy or resistance requirement is met"
+        },
+        {
+          "profile": "default",
+          "choose_option": 3,
+          "reason": "if option 1 requirement is not met, skip; option 2 is pure loss"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 一般这个时间点除了共鸣给命中或者命抗加成的角色，否则很难达到选1条件；达到了肯定选1.",
+        "Screenshot note: 选不了就一般选3跳过，2选项纯亏."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "lisette_luck",
+      "title": "蓄塞特的运气",
+      "time": "九月下旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "将抽奖券放入左侧的盒子中",
+          "costs": {
+            "items": [
+              "蓄塞乐彩票"
+            ]
+          },
+          "outcomes": {
+            "success": {
+              "effects": {
+                "old_coins": 150,
+                "mood": 1
+              }
+            },
+            "failure": {
+              "effects": {}
+            }
+          }
+        },
+        {
+          "index": 2,
+          "text": "将抽奖券放入右侧的盒子中",
+          "costs": {
+            "items": [
+              "蓄塞乐彩票"
+            ]
+          },
+          "outcomes": {
+            "success": {
+              "effects": {
+                "old_coins": 150,
+                "stamina": 10
+              }
+            },
+            "failure": {
+              "effects": {}
+            }
+          }
+        },
+        {
+          "index": 3,
+          "text": "寻找下一个机会",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "need_stamina",
+          "choose_option": 2,
+          "reason": "if a Lisette lottery ticket exists, right box can high-roll old coins and stamina"
+        },
+        {
+          "profile": "need_mood",
+          "choose_option": 1,
+          "reason": "left box can high-roll old coins and mood"
+        },
+        {
+          "profile": "no_lottery_ticket",
+          "choose_option": 3,
+          "reason": "cannot gamble without the required lottery ticket"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 前面有在商店里买彩票吗就可以抽，赌回体力选右，随机成功或者失败."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "order_lost_item",
+      "title": "教团的失物",
+      "time": "九月下旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "赶紧打开吧",
+          "costs": {
+            "items": [
+              "可疑的盒子"
+            ]
+          },
+          "effects": {
+            "power": 10,
+            "life": 10,
+            "defense": 10
+          }
+        },
+        {
+          "index": 2,
+          "text": "以后再打开吧",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "screenshot note says generally open it"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 一般选打开."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "order_proposal",
+      "title": "教团的提议",
+      "time": "九月下旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "将遗物卖给教团",
+          "costs": {
+            "items": [
+              "来历不明的遗物"
+            ]
+          },
+          "effects": {
+            "old_coins": 80
+          }
+        },
+        {
+          "index": 2,
+          "text": "先留着看看",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "screenshot note says generally sell it"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 一般选择卖了."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "power_training_result",
+      "title": "力量特训的成果",
+      "time": "九月下旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "我不会忘记至今所学的内容",
+          "costs": {
+            "items": [
+              "力量特训认证书"
+            ]
+          },
+          "items": [
+            "力量训练结业证"
+          ]
+        },
+        {
+          "index": 2,
+          "text": "还需要更多学习",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "has_power_training_certificate",
+          "choose_option": 1,
+          "reason": "convert the certificate when the follow-up event appears"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 五月中旬的随机事件触发过才有可能触发，一般选换."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "life_training_result",
+      "title": "生命特训的成果",
+      "time": "九月下旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "我不会忘记至今所学的内容",
+          "costs": {
+            "items": [
+              "生命特训认证书"
+            ]
+          },
+          "items": [
+            "生命训练结业证"
+          ]
+        },
+        {
+          "index": 2,
+          "text": "还需要更多学习",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "has_life_training_certificate",
+          "choose_option": 1,
+          "reason": "convert the certificate when the follow-up event appears"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 五月中旬的随机事件触发过才有可能触发，一般选换."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "unexpected_encouragement",
+      "title": "意外的鼓励",
+      "time": "九月下旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "相信付出就会有成果！",
+          "costs": {
+            "stamina": -10
+          },
+          "outcomes": {
+            "success": {
+              "effects": {
+                "one_of": [
+                  {
+                    "power": 10
+                  },
+                  {
+                    "life": 10
+                  },
+                  {
+                    "defense": 10
+                  }
+                ],
+                "buff": {
+                  "name": "截止压力效果",
+                  "duration_turns": 5,
+                  "effect": "训练中获得的潜力点增加"
+                }
+              }
+            },
+            "failure": {
+              "effects": {
+                "one_of": [
+                  {
+                    "power": 5
+                  },
+                  {
+                    "life": 5
+                  },
+                  {
+                    "defense": 5
+                  }
+                ],
+                "debuff": {
+                  "name": "过度贪心",
+                  "duration_turns": 5,
+                  "effect": "训练失败率上升"
+                }
+              }
+            }
+          }
+        },
+        {
+          "index": 2,
+          "text": "再稍微努力一下吧",
+          "costs": {
+            "stamina": -10
+          },
+          "effects": {
+            "one_of": [
+              {
+                "power": 5
+              },
+              {
+                "life": 5
+              },
+              {
+                "defense": 5
+              }
+            ]
+          }
+        },
+        {
+          "index": 3,
+          "text": "现在这样已经足够了",
+          "costs": {},
+          "effects": {},
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "gamble",
+          "choose_option": 1,
+          "reason": "option 1 is the only high-upside route, but can add training failure risk"
+        },
+        {
+          "profile": "safe_mode",
+          "choose_option": 3,
+          "reason": "skip when the stamina and failure-risk gamble is not worth it"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 选2选项给的属性如果是开局还能考虑，到这个回合就有点亏，选1选项开赌或者3选项放弃吧."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "future_choice",
+      "title": "为了未来的选择",
+      "time": "九月下旬",
+      "kind": "random",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "先留着看看",
+          "effects": {
+            "first_battle_self_speed": -30
+          },
+          "items": [
+            "古老的沙漏"
+          ],
+          "avoid": true
+        },
+        {
+          "index": 2,
+          "text": "拒绝",
+          "effects": {
+            "skill_points": 10
+          },
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "default",
+          "choose_option": 2,
+          "reason": "never take the hourglass because -30 speed can break race thresholds"
+        }
+      ],
+      "notes": [
+        "Screenshot note: 绝对不能选1选项，-30速度会让你本来能跑过的马跑不过了，不差这点技能点."
+      ],
+      "status": "confirmed_from_screenshot"
+    },
+    {
+      "id": "lisette_holiday",
+      "title": "蓄塞特的假期",
+      "time": "十月下旬",
+      "kind": "fixed",
+      "category": "choice_event",
+      "options": [
+        {
+          "index": 1,
+          "text": "我们一起找个地方买吧",
+          "costs": {
+            "stamina": -20
+          },
+          "effects": {
+            "one_of": [
+              {
+                "accuracy": 30,
+                "resistance": 15
+              },
+              {
+                "resistance": 30,
+                "focus": 15
+              }
+            ],
+            "buff": {
+              "name": "和蓄塞特的回忆",
+              "duration_turns": 5,
+              "effect": "训练失败率降低"
+            }
+          },
+          "items": [
+            "古董钥匙"
+          ]
+        },
+        {
+          "index": 2,
+          "text": "请告诉我它的销售地点",
+          "effects": {
+            "one_of": [
+              {
+                "accuracy": 8
+              },
+              {
+                "resistance": 8
+              }
+            ]
+          },
+          "items": []
+        }
+      ],
+      "default_rules": [
+        {
+          "profile": "accuracy_or_resistance_buffed",
+          "choose_option": 1,
+          "reason": "if the character can meet the option 1 condition, take the large stat package, key, and 5-turn training-failure reduction"
+        },
+        {
+          "profile": "cannot_meet_option_1_condition",
+          "choose_option": 3,
+          "reason": "user note says skip with option 3 when option 1 is unavailable; option 2 is poor value"
+        }
+      ],
+      "notes": [
+        "Visible screenshot text for option 1: 体力 -20; 命中 +30 命抗 +15 or 命抗 +30 专注 +15; 道具「古董钥匙」; buff「和蓄塞特的回忆」（5回合）; 训练失败率降低.",
+        "Visible screenshot text for option 2: 命中 +8 or 命抗 +8.",
+        "Screenshot note: 一般这个时间点除了共鸣给命中或者命抗加成的角色，否则很难达到选1选项的条件，达到了肯定选1选项.",
+        "Screenshot note: 选不了就一般选3选项跳过，2选项纯亏.",
+        "Option 3 is referenced by the note but not visible in this screenshot; record its exact button text when a fuller screenshot is available."
+      ],
+      "status": "partially_confirmed"
+    }
+  ]
+}

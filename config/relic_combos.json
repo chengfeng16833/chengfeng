@@ -1,0 +1,277 @@
+{
+  "schema": "starsavior.relic_combos.v1",
+  "source": {
+    "type": "user_screenshot",
+    "captured_at": "2026-05-21"
+  },
+  "notes": [
+    "These are combo relics unlocked by the March early fixed event training_direction.",
+    "XX means the exact secondary stat changes by character/class or generated value and is not yet confirmed.",
+    "Priority scores are initial placeholders for strategy routing and should be tuned after more screenshots/runs."
+  ],
+  "pools": {
+    "attack_training_textbook": [
+      "AXN",
+      "EXN",
+      "FXN"
+    ],
+    "survival_training_textbook": [
+      "BXN",
+      "CXN",
+      "DXN"
+    ],
+    "utility_training_textbook": [
+      "GXN",
+      "HXN",
+      "XX1",
+      "XX2",
+      "XX3"
+    ]
+  },
+  "relics": [
+    {
+      "code": "AXN",
+      "name": "星光轨迹 AXN 号",
+      "main_stat": {
+        "key": "attack_power",
+        "label": "攻击力",
+        "value": 8,
+        "unit": "%"
+      },
+      "effect": "回合开始时，攻击力提升 8%。最多叠加 5 次，使用终极技能后重置。",
+      "tags": [
+        "damage",
+        "stacking",
+        "power"
+      ],
+      "profile_priority": {
+        "power_focus": 100,
+        "balanced": 70
+      }
+    },
+    {
+      "code": "BXN",
+      "name": "星光轨迹 BXN 号",
+      "main_stat": {
+        "key": "life",
+        "label": "生命值",
+        "value": 8,
+        "unit": "%"
+      },
+      "effect": "被攻击后有 25% 的几率恢复生命值。恢复量与最大生命值相关。",
+      "tags": [
+        "survival",
+        "heal",
+        "life_scaling"
+      ],
+      "profile_priority": {
+        "stamina_tank": 100,
+        "durability_focus": 90,
+        "protection_focus": 75
+      }
+    },
+    {
+      "code": "CXN",
+      "name": "星光轨迹 CXN 号",
+      "main_stat": {
+        "key": "defense",
+        "label": "防御",
+        "value": 12,
+        "unit": "%"
+      },
+      "effect": "被击中时防御提升 10%。叠加最多 5 次，攻击后重置。",
+      "tags": [
+        "survival",
+        "defense",
+        "stacking"
+      ],
+      "profile_priority": {
+        "durability_focus": 85,
+        "protection_focus": 80,
+        "stamina_tank": 70
+      }
+    },
+    {
+      "code": "DXN",
+      "name": "星光轨迹 DXN 号",
+      "main_stat": {
+        "key": "speed",
+        "label": "速度",
+        "value": 8,
+        "unit": "%"
+      },
+      "effect": "使用普通攻击后，有 25% 几率增加 10% 的行动条。每回合最多触发一次。",
+      "tags": [
+        "speed",
+        "turn_meter",
+        "pvp"
+      ],
+      "profile_priority": {
+        "pvp_control": 95,
+        "balanced": 65,
+        "power_focus": 55
+      }
+    },
+    {
+      "code": "EXN",
+      "name": "星光轨迹 EXN 号",
+      "main_stat": {
+        "key": "crit_rate",
+        "label": "暴击率",
+        "value": 10,
+        "unit": "%"
+      },
+      "effect": "普通攻击暴击时，有 25% 的概率触发随机队友的普通攻击。每回合仅触发一次，攻击目标被击败时也会生效。",
+      "tags": [
+        "crit",
+        "assist_attack",
+        "requires_setup"
+      ],
+      "profile_priority": {
+        "power_focus": 45,
+        "counter_build": 60
+      }
+    },
+    {
+      "code": "FXN",
+      "name": "星光轨迹 FXN 号",
+      "main_stat": {
+        "key": "crit_damage",
+        "label": "暴击伤害",
+        "value": 10,
+        "unit": "%"
+      },
+      "effect": "触发暴击后，下一次攻击造成的伤害提升 25%。",
+      "tags": [
+        "crit",
+        "burst",
+        "requires_setup"
+      ],
+      "profile_priority": {
+        "power_focus": 45
+      }
+    },
+    {
+      "code": "GXN",
+      "name": "星光轨迹 GXN 号",
+      "main_stat": {
+        "key": "effect_accuracy",
+        "label": "效果命中",
+        "value": 16,
+        "unit": "%"
+      },
+      "effect": "普通攻击命中后，有 50% 的概率使目标陷入“流血”状态，持续 2 回合。",
+      "tags": [
+        "debuff",
+        "bleed",
+        "effect_accuracy"
+      ],
+      "profile_priority": {
+        "pvp_control": 80,
+        "balanced": 50
+      }
+    },
+    {
+      "code": "HXN",
+      "name": "星光轨迹 HXN 号",
+      "main_stat": {
+        "key": "effect_resistance",
+        "label": "效果抵抗",
+        "value": 16,
+        "unit": "%"
+      },
+      "effect": "被单体攻击击中后，若自身不处于激活状态，有 50% 的几率使攻击者受到基于自身最大生命一定比例的伤害。",
+      "tags": [
+        "resistance",
+        "retaliation",
+        "survival"
+      ],
+      "profile_priority": {
+        "protection_focus": 70,
+        "stamina_tank": 70,
+        "counter_build": 85
+      }
+    },
+    {
+      "code": "XX1",
+      "name": "星光轨迹 XX1 号",
+      "main_stat": {
+        "key": "counterattack_chance",
+        "label": "反击概率",
+        "value": 20,
+        "unit": "%"
+      },
+      "effect": "受到伤害后，20% 概率用普通攻击还击攻击方。",
+      "tags": [
+        "counterattack",
+        "pvp",
+        "requires_setup"
+      ],
+      "profile_priority": {
+        "counter_build": 95,
+        "protection_focus": 65
+      }
+    },
+    {
+      "code": "XX2",
+      "name": "星光轨迹 XX2 号",
+      "main_stat": {
+        "key": "life_steal",
+        "label": "生命吸取",
+        "value": 15,
+        "unit": "%"
+      },
+      "effect": "获得 15% 生命吸取。",
+      "tags": [
+        "sustain",
+        "damage"
+      ],
+      "profile_priority": {
+        "power_focus": 60,
+        "stamina_tank": 55,
+        "balanced": 55
+      }
+    },
+    {
+      "code": "XX3",
+      "name": "星光轨迹 XX3 号",
+      "main_stat": {
+        "key": "max_shield",
+        "label": "最大护盾",
+        "value": 3,
+        "unit": "flat"
+      },
+      "effect": "最大护盾提升 3。",
+      "tags": [
+        "shield",
+        "survival"
+      ],
+      "profile_priority": {
+        "protection_focus": 80,
+        "stamina_tank": 65
+      }
+    },
+    {
+      "code": "XXX",
+      "name": "星光轨迹 XXX 号",
+      "main_stat": {
+        "key": "all_stats",
+        "label": "全属性",
+        "value": 2,
+        "unit": "%"
+      },
+      "effect": "战斗开始时，提升攻击力、生命值、防御、速度、暴击率、暴击伤害、效果命中和效果抵抗 2%。",
+      "tags": [
+        "all_stats",
+        "universal"
+      ],
+      "profile_priority": {
+        "balanced": 85,
+        "power_focus": 55,
+        "stamina_tank": 55,
+        "durability_focus": 55,
+        "protection_focus": 55
+      }
+    }
+  ]
+}

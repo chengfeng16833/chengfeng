@@ -1,0 +1,150 @@
+{
+  "state": {
+    "current_rank": "C",
+    "coins": 80,
+    "safe_mode": true
+  },
+  "frames": [
+    {
+      "image": "screenshots/initial_001.png",
+      "screen": "initial",
+      "confidence": 1.0
+    },
+    {
+      "image": "screenshots/character_select_001.png",
+      "screen": "character_select",
+      "confidence": 1.0,
+      "payload": {
+        "selected_name": "beier_lisi",
+        "confirm_button": [1629, 1046, 357, 58],
+        "options": [
+          {"name": "beier_lisi", "rank": "A", "stars": 4, "specialty": "focus", "selected": true, "target": [1624, 202, 363, 96]}
+        ]
+      }
+    },
+    {
+      "image": "screenshots/blessing_setup_001.png",
+      "screen": "blessing_setup",
+      "confidence": 1.0,
+      "payload": {
+        "slots": [
+          {"index": 1, "occupied": false, "target": [768, 584, 196, 196]},
+          {"index": 2, "occupied": false, "target": [1646, 337, 196, 196]}
+        ],
+        "auto_equip_button": [1688, 976, 210, 52],
+        "confirm_button": [1684, 1044, 290, 60],
+        "can_confirm": false
+      }
+    },
+    {
+      "image": "screenshots/blessing_choice_001.png",
+      "screen": "blessing_choice",
+      "confidence": 1.0,
+      "payload": {
+        "options": [
+          {
+            "name": "power_blessing",
+            "attribute": "power",
+            "value": 50,
+            "sub_blessing_count": 1,
+            "sub_blessing_names": ["attack_sense"],
+            "target": [0, 0, 1, 1]
+          }
+        ]
+      }
+    },
+    {
+      "image": "screenshots/journey_start_001.png",
+      "screen": "journey_start",
+      "confidence": 1.0,
+      "payload": {
+        "start_button": [1542, 1078, 430, 60],
+        "auto_journey_button": [1300, 1078, 232, 60],
+        "arcana_slots": [
+          [1124, 392, 130, 292],
+          [1276, 430, 130, 292],
+          [1426, 448, 130, 292],
+          [1584, 402, 160, 292],
+          [1778, 424, 160, 292]
+        ]
+      }
+    },
+    {
+      "image": "screenshots/entry_confirm_001.png",
+      "screen": "confirm_dialog",
+      "confidence": 1.0,
+      "payload": {
+        "title": "entry_confirm",
+        "message": "start_journey",
+        "cancel_button": [730, 753, 286, 60],
+        "confirm_button": [1033, 753, 286, 60]
+      }
+    },
+    {
+      "image": "screenshots/event_fast_forward_setting_001.png",
+      "screen": "event_fast_forward_setting",
+      "confidence": 1.0,
+      "payload": {
+        "no_fast_forward_option": [433, 389, 394, 306],
+        "watched_only_option": [835, 389, 380, 300],
+        "all_events_option": [1228, 389, 380, 300],
+        "confirm_button": [882, 805, 286, 60],
+        "selected_mode": "no_fast_forward"
+      }
+    },
+    {
+      "image": "screenshots/dialogue_intro_001.png",
+      "screen": "dialogue",
+      "confidence": 1.0,
+      "payload": {
+        "variant": "intro_story",
+        "skip_button": [1905, 40, 105, 55],
+        "text_area": [710, 940, 620, 92]
+      }
+    },
+    {
+      "image": "screenshots/dialogue_journey_hud_001.png",
+      "screen": "dialogue",
+      "confidence": 1.0,
+      "payload": {
+        "variant": "journey_hud",
+        "skip_button": [1484, 43, 62, 52],
+        "text_area": [820, 940, 520, 92]
+      }
+    },
+    {
+      "image": "screenshots/relic_choice_initial_001.png",
+      "screen": "relic_choice",
+      "confidence": 1.0,
+      "payload": {
+        "fixed_name": "annoying_cuckoo_clock",
+        "confirm_button": [863, 927, 322, 66],
+        "options": [
+          {"name": "soft_toy_friend", "score": 12, "target": [390, 263, 384, 604]},
+          {"name": "annoying_cuckoo_clock", "score": 12, "target": [832, 263, 384, 604]},
+          {"name": "balanced_scale", "score": 12, "target": [1275, 263, 384, 604]}
+        ]
+      }
+    },
+    {
+      "image": "screenshots/training_select_001.png",
+      "screen": "training_select",
+      "confidence": 1.0,
+      "payload": [
+        {"name": "speed", "stat_gain": 0, "ring": "none", "fail_rate": 0, "target": [0, 0, 1, 1]},
+        {"name": "stamina", "stat_gain": 0, "ring": "none", "fail_rate": 0, "target": [0, 0, 1, 1]},
+        {"name": "power", "stat_gain": 0, "ring": "none", "fail_rate": 0, "target": [0, 0, 1, 1]},
+        {"name": "guts", "stat_gain": 0, "ring": "none", "fail_rate": 0, "target": [0, 0, 1, 1]},
+        {"name": "wisdom", "stat_gain": 0, "ring": "none", "fail_rate": 0, "target": [0, 0, 1, 1]}
+      ]
+    },
+    {
+      "image": "screenshots/shop_001.png",
+      "screen": "shop",
+      "confidence": 1.0,
+      "payload": [
+        {"name": "stamina_potion", "price": 0, "target": [0, 0, 1, 1]}
+      ]
+    }
+  ]
+}

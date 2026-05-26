@@ -1,0 +1,188 @@
+{
+  "schema": "starsavior.event_timeline.v1",
+  "source": {
+    "type": "user_screenshot",
+    "captured_at": "2026-05-21",
+    "description": "带选项事件汇总时间表截图"
+  },
+  "title": "带选项事件汇总",
+  "notes": [
+    "This file records when fixed, random, weather, and training-failure events can appear.",
+    "Event option effects should be stored separately in config/events.json after individual event screenshots are confirmed.",
+    "The screenshot says there are 12 training rounds before the first camp, then 6 training rounds per following segment."
+  ],
+  "segments": [
+    {
+      "id": "pre_first_camp",
+      "label": "第一次合宿前",
+      "training_rounds": 12,
+      "events": [
+        {
+          "time": "三月上旬",
+          "kind": "fixed"
+        },
+        {
+          "time": "三月中旬",
+          "kind": "random"
+        },
+        {
+          "time": "四月下旬",
+          "kind": "fixed"
+        },
+        {
+          "time": "五月中旬",
+          "kind": "random"
+        },
+        {
+          "time": "六月下旬",
+          "kind": "fixed"
+        }
+      ]
+    },
+    {
+      "id": "first_camp_aganon",
+      "label": "第一次合宿 阿加农",
+      "training_rounds": 6,
+      "bonus": {
+        "text": "防御命中命抗加成",
+        "stats": [
+          "defense",
+          "accuracy",
+          "resistance"
+        ]
+      },
+      "events": [
+        {
+          "time": "七月中旬",
+          "kind": "fixed"
+        },
+        {
+          "time": "七月下旬",
+          "kind": "fixed"
+        },
+        {
+          "time": "八月中旬",
+          "kind": "random"
+        }
+      ]
+    },
+    {
+      "id": "between_camps",
+      "label": "第一次合宿后",
+      "training_rounds": 6,
+      "events": [
+        {
+          "time": "九月下旬",
+          "kind": "random"
+        },
+        {
+          "time": "十月下旬",
+          "kind": "fixed"
+        }
+      ]
+    },
+    {
+      "id": "second_camp_flora",
+      "label": "第二次合宿 弗洛拉",
+      "choice": "optional",
+      "training_rounds": 6,
+      "bonus": {
+        "text": "力量命中加成",
+        "stats": [
+          "power",
+          "accuracy"
+        ]
+      },
+      "events": [
+        {
+          "time": "十一月中旬",
+          "kind": "fixed"
+        },
+        {
+          "time": "十一月中旬",
+          "kind": "random"
+        },
+        {
+          "time": "十一月下旬",
+          "kind": "fixed"
+        },
+        {
+          "time": "十二月中旬",
+          "kind": "random"
+        }
+      ]
+    },
+    {
+      "id": "second_camp_khalid",
+      "label": "第二次合宿 卡利德",
+      "choice": "optional",
+      "training_rounds": 6,
+      "bonus": {
+        "text": "生命命抗加成",
+        "stats": [
+          "life",
+          "resistance"
+        ]
+      },
+      "events": [
+        {
+          "time": "十一月中旬",
+          "kind": "fixed"
+        },
+        {
+          "time": "十一月中旬",
+          "kind": "random"
+        },
+        {
+          "time": "十一月下旬",
+          "kind": "fixed"
+        },
+        {
+          "time": "十二月中旬",
+          "kind": "random"
+        }
+      ]
+    },
+    {
+      "id": "final_segment",
+      "label": "最后6个训练回合",
+      "training_rounds": 6,
+      "events": [
+        {
+          "time": "一月下旬",
+          "kind": "fixed"
+        },
+        {
+          "time": "二月下旬",
+          "kind": "random"
+        }
+      ]
+    }
+  ],
+  "special_events": [
+    {
+      "id": "weather",
+      "label": "天气事件",
+      "kind": "random",
+      "times": [
+        "五月底",
+        "七月中旬",
+        "九月底",
+        "十一月中旬"
+      ],
+      "options": [
+        "晴朗",
+        "雷雨",
+        "大雾"
+      ]
+    },
+    {
+      "id": "training_failure",
+      "label": "训练失败事件",
+      "kind": "failure",
+      "options": [
+        "训练失败"
+      ]
+    }
+  ]
+}

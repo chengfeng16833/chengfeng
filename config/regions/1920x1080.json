@@ -1,0 +1,16 @@
+{
+  "name": "pc-1920x1080-draft",
+  "resolution": [1920, 1080],
+  "regions": {
+    "start_button": [960, 820, 240, 80],
+    "skip_button": [1740, 980, 120, 60],
+    "move_button": [1580, 900, 220, 80],
+    "training_speed": [200, 720, 220, 120],
+    "training_stamina": [480, 720, 220, 120],
+    "training_power": [760, 720, 220, 120],
+    "training_guts": [1040, 720, 220, 120],
+    "training_wisdom": [1320, 720, 220, 120],
+    "rest_meditation_room": [900, 520, 240, 90],
+    "rest_rough_sleep": [900, 660, 240, 90]
+  }
+}

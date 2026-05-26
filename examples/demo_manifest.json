@@ -1,0 +1,35 @@
+{
+  "state": {
+    "current_rank": "C",
+    "coins": 80,
+    "safe_mode": true
+  },
+  "frames": [
+    {
+      "image": "initial_001.png",
+      "screen": "initial",
+      "confidence": 0.95
+    },
+    {
+      "image": "training_select_001.png",
+      "screen": "training_select",
+      "confidence": 0.92,
+      "payload": [
+        {"name": "speed", "stat_gain": 24, "ring": "blue", "fail_rate": 3, "target": [200, 720, 220, 120]},
+        {"name": "stamina", "stat_gain": 18, "ring": "rainbow", "fail_rate": 12, "target": [480, 720, 220, 120]},
+        {"name": "power", "stat_gain": 32, "ring": "none", "fail_rate": 28, "target": [760, 720, 220, 120]},
+        {"name": "guts", "stat_gain": 14, "ring": "gold", "fail_rate": 0, "target": [1040, 720, 220, 120]},
+        {"name": "wisdom", "stat_gain": 10, "ring": "none", "fail_rate": 0, "target": [1320, 720, 220, 120]}
+      ]
+    },
+    {
+      "image": "shop_001.png",
+      "screen": "shop",
+      "confidence": 0.89,
+      "payload": [
+        {"name": "decoration", "price": 40, "target": [1380, 420, 160, 60]},
+        {"name": "stamina_potion", "price": 75, "target": [1380, 520, 160, 60]}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+pillow
+pyautogui==0.9.54
+paddleocr==3.5.0
+paddlepaddle==3.2.2
+numpy==2.3.5
