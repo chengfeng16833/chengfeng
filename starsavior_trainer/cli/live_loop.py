@@ -418,6 +418,8 @@ def _rest_submenu_blue(
         has_meditation_room=has_meditation,
         meditation_room=meditation_rect or rough_sleep_rect or Rect(0, 0, 1, 1),
         rough_sleep=rough_sleep_rect or free_sleep_rect or Rect(0, 0, 1, 1),
+        lodging=profile.regions.get("rest_submenu_option_2"),
+        confirm_button=profile.regions.get("rest_submenu_confirm_button"),
     )
 
 

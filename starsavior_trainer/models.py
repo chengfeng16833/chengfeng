@@ -71,6 +71,10 @@ class RestSubmenu:
     has_meditation_room: bool
     meditation_room: Rect
     rough_sleep: Rect
+    # 住处 (30-coin lodging) option and the bottom-right 休息 confirm button.
+    # Rest is a two-step flow (select option, then confirm) like training/commission.
+    lodging: Rect | None = None
+    confirm_button: Rect | None = None
 
 
 @dataclass(frozen=True)

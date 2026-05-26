@@ -21,6 +21,7 @@ from starsavior_trainer.models import (
     Rect,
     RelicChoice,
     RelicOption,
+    RestSubmenu,
     Screen,
     SkillOption,
     TrainingChoice,
@@ -284,6 +285,50 @@ class TrainerPolicyTest(unittest.TestCase):
         # 3) flag cleared -> hub resumes normal training (no loop)
         resume = policy.decide(state, Observation(Screen.TRAINING_HUB, 1.0, hub))
         self.assertEqual(resume.target, train_btn)
+
+    def _rest(self, coins: int, *, confirm=True) -> RestSubmenu:
+        return RestSubmenu(
+            coins=coins,
+            has_meditation_room=True,
+            meditation_room=Rect(2000, 800, 460, 110),
+            rough_sleep=Rect(2000, 498, 460, 110),
+            lodging=Rect(2000, 648, 460, 110),
+            confirm_button=Rect(2050, 1255, 420, 95) if confirm else None,
+        )
+
+    def test_rest_picks_meditation_when_coins_high(self) -> None:
+        rest = self._rest(70)
+        action = TrainerPolicy().decide_rest(rest)
+        self.assertEqual(action.target, rest.meditation_room)
+        self.assertIn("meditation", action.reason)
+
+    def test_rest_picks_lodging_when_coins_mid(self) -> None:
+        # 30 <= coins < 60 → 住处 (lodging), per the user's rule (not free 露宿).
+        rest = self._rest(48)
+        action = TrainerPolicy().decide_rest(rest)
+        self.assertEqual(action.target, rest.lodging)
+        self.assertIn("lodging", action.reason)
+
+    def test_rest_picks_rough_sleep_when_broke(self) -> None:
+        rest = self._rest(10)
+        action = TrainerPolicy().decide_rest(rest)
+        self.assertEqual(action.target, rest.rough_sleep)
+        self.assertIn("rough_sleep", action.reason)
+
+    def test_rest_two_step_select_then_confirm(self) -> None:
+        policy = TrainerPolicy()
+        rest = self._rest(48)
+        first = policy.decide_rest(rest)
+        second = policy.decide_rest(rest)
+        self.assertEqual(first.target, rest.lodging)
+        self.assertIn("select", first.reason)
+        self.assertEqual(second.target, rest.confirm_button)
+        self.assertIn("confirm", second.reason)
+
+    def test_rest_single_click_when_no_confirm_button(self) -> None:
+        rest = self._rest(48, confirm=False)
+        action = TrainerPolicy().decide_rest(rest)
+        self.assertEqual(action.target, rest.lodging)
 
     def test_event_attack_survival_branch_follows_build_profile(self) -> None:
         # 训练的方向性-style events: power builds take the attack option, stamina

@@ -150,6 +150,7 @@ class PolicyConfig:
     min_screen_confidence: float = 0.75
     max_training_fail_rate: int = 30
     meditation_coin_threshold: int = 60
+    lodging_coin_threshold: int = 30
     min_skill_points: int = 90
     ring_bonus: dict[str, int] = field(
         default_factory=lambda: {
@@ -217,6 +218,8 @@ class TrainerPolicy:
         # Set when we bail out of TRAINING_SELECT because every option's fail rate
         # is too high; the next TRAINING_HUB decision consumes it to go rest.
         self._needs_rest: bool = False
+        # Two-step rest: remembers the option we selected so the next call confirms.
+        self._pending_rest: Rect | None = None
 
     def decide(self, state: GameState, observation: Observation) -> Action:
         if observation.confidence < self.config.min_screen_confidence:
@@ -368,9 +371,24 @@ class TrainerPolicy:
         )
 
     def decide_rest(self, rest: RestSubmenu) -> Action:
-        if rest.coins >= self.config.meditation_coin_threshold and rest.has_meditation_room:
-            return Action("click", rest.meditation_room, "coins threshold met, choose meditation_room")
-        return Action("click", rest.rough_sleep, "coins too low or meditation_room missing, choose rough_sleep")
+        # Pick the best affordable option: 冥想室 (60, full restore) > 住处 (30,
+        # decent restore + mood) > 露宿 (free, but may lower mood — last resort).
+        if rest.coins >= self.config.meditation_coin_threshold and rest.has_meditation_room and rest.meditation_room is not None:
+            target, label = rest.meditation_room, "meditation_room"
+        elif rest.coins >= self.config.lodging_coin_threshold and rest.lodging is not None:
+            target, label = rest.lodging, "lodging"
+        else:
+            target, label = rest.rough_sleep, "rough_sleep"
+
+        # Two-step flow: select the option, then click the 休息 confirm button.
+        # Without a confirm button (e.g. uncalibrated), fall back to a single click.
+        if rest.confirm_button is None:
+            return Action("click", target, f"rest: {label}")
+        if self._pending_rest == target:
+            self._pending_rest = None
+            return Action("click", rest.confirm_button, f"confirm rest: {label}")
+        self._pending_rest = target
+        return Action("click", target, f"select rest: {label}")
 
     def event_priority(self, option: EventOption) -> tuple[int, str]:
         text = option.text.lower()
