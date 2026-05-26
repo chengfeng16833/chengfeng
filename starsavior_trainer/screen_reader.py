@@ -614,7 +614,12 @@ def parse_relic_name(text: str) -> str | None:
     for name, aliases in RELIC_NAME_ALIASES.items():
         if contains_any_text(text, aliases):
             return name
-    return None
+    # Unknown relic: keep the raw OCR name (cleaned) instead of returning None.
+    # This stops non-first-round relics from being labelled "unknown_relic_N" and,
+    # crucially, keeps the highlighted/selected card (whose name OCRs slightly
+    # garbled) from being dropped from the options list.
+    cleaned = (text or "").strip()
+    return cleaned or None
 
 
 # ---------------------------------------------------------------------------

@@ -295,6 +295,42 @@ class ScreenReaderParserTest(unittest.TestCase):
         self.assertEqual(parse_relic_name("\u70e6\u4eba\u7684\u5e03\u8c37\u9e1f\u65f6\u949f"), "annoying_cuckoo_clock")
         self.assertEqual(parse_relic_name("\u5e73\u8861\u7684\u5929\u79e4"), "balanced_scale")
 
+    def test_parse_relic_name_keeps_unknown_relic_names(self) -> None:
+        # Non-first-round relics aren't in the alias table \u2014 keep their raw name so
+        # the card isn't dropped and isn't labelled "unknown_relic_N". A highlighted
+        # card whose name OCRs slightly garbled must still be kept.
+        self.assertEqual(parse_relic_name("\u53e4\u4ee3\u6551\u63f4\u8005\u7684\u5e3d\u5b50"), "\u53e4\u4ee3\u6551\u63f4\u8005\u7684\u5e3d\u5b50")
+        self.assertEqual(parse_relic_name("\u4ee3\u6551\u62e8\u8005\u7684\u624b"), "\u4ee3\u6551\u62e8\u8005\u7684\u624b")
+        self.assertIsNone(parse_relic_name(""))
+        self.assertIsNone(parse_relic_name("   "))
+
+    def test_parse_relic_choice_keeps_selected_card_with_garbled_name(self) -> None:
+        # Regression: the highlighted card (garbled name, blank score) used to be
+        # dropped because both name and score were None. It must now be kept.
+        profile = RegionProfile(
+            "test",
+            (2560, 1440),
+            {
+                "relic_choice_title": Rect(260, 62, 220, 60),
+                "relic_choice_card_1": Rect(485, 330, 480, 750),
+                "relic_choice_card_2": Rect(1040, 330, 480, 750),
+                "relic_choice_card_3": Rect(1593, 330, 480, 750),
+                "relic_choice_confirm_button": Rect(1080, 1158, 400, 82),
+            },
+        )
+        texts = [
+            RegionText("relic_choice_card_1_name", "\u4ee3\u6551\u62e8\u8005\u7684\u624b", 0.6),  # garbled, no score
+            RegionText("relic_choice_card_2_name", "\u53e4\u4ee3\u6551\u63f4\u8005\u7684\u5e3d\u5b50", 0.9),
+            RegionText("relic_choice_card_2_score", "8", 0.9),
+            RegionText("relic_choice_card_3_name", "\u53e4\u4ee3\u6551\u63f4\u8005\u7684\u9879\u94fe", 0.9),
+            RegionText("relic_choice_card_3_score", "8", 0.9),
+        ]
+
+        choice = parse_relic_choice(texts, profile)
+
+        self.assertEqual(len(choice.options), 3)
+        self.assertEqual(choice.options[0].name, "\u4ee3\u6551\u62e8\u8005\u7684\u624b")
+
     def test_parse_initial_relic_choice_sets_fixed_cuckoo_clock(self) -> None:
         profile = _initial_relic_profile()
         choice = parse_relic_choice(_initial_relic_texts(), profile)
