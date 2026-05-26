@@ -82,6 +82,73 @@ from starsavior_trainer.screens import HANDLERS
 logger = get_logger("live_loop")
 
 
+# ---------------------------------------------------------------------------
+# F12 pause hotkey — lets the operator reclaim mouse/keyboard control mid-run
+# ---------------------------------------------------------------------------
+
+
+class PauseController:
+    """Toggle-able pause flag for the live loop, flipped by a global F12 hotkey.
+
+    The main loop reads :pyattr:`paused` once per iteration; the hotkey
+    callback runs on the ``keyboard`` library's listener thread and flips the
+    flag.  A plain bool read/write is atomic in CPython, so no lock is needed.
+    """
+
+    def __init__(self) -> None:
+        self._paused = False
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    def toggle(self) -> bool:
+        """Flip the pause state and return the new value (bound to the hotkey)."""
+        self._paused = not self._paused
+        return self._paused
+
+    def pause(self) -> None:
+        self._paused = True
+
+    def resume(self) -> None:
+        self._paused = False
+
+
+def install_pause_hotkey(controller: PauseController, key: str = "f12") -> bool:
+    """Register a global hotkey that toggles ``controller``'s pause state.
+
+    Uses the ``keyboard`` library.  IMPORTANT: ``keyboard`` installs a
+    low-level, system-wide keyboard hook.  Listening for a *global* hotkey can
+    therefore require **running this console as Administrator** on Windows
+    (and requires root on Linux); without sufficient privileges the hook may
+    fail to register.
+
+    This function never raises: if the library isn't installed, or the hook
+    can't be registered (e.g. insufficient privileges), it logs/prints a
+    warning and returns ``False`` so the caller keeps running normally — just
+    without the hotkey.
+    """
+    try:
+        import keyboard  # type: ignore  # lazy: only needed for the live hotkey
+    except Exception as exc:  # ImportError or any other import-time failure
+        msg = f"F12 暂停热键不可用（keyboard 库导入失败: {exc}）。脚本将正常运行。"
+        logger.warning(msg)
+        print(f"[warn] {msg}")
+        return False
+
+    try:
+        keyboard.add_hotkey(key, controller.toggle)
+    except Exception as exc:  # registration failed — often needs admin rights
+        msg = f"F12 暂停热键注册失败（监听全局热键可能需要管理员权限运行: {exc}）。脚本将正常运行。"
+        logger.warning(msg)
+        print(f"[warn] {msg}")
+        return False
+
+    logger.info("F12 暂停热键已启用。")
+    print(f"F12 暂停热键已启用：实跑中按 {key.upper()} 可暂停/恢复（夺回控制权）。")
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Starsavior live training loop.")
     parser.add_argument("--profile", default="config/regions/2560x1440.json", help="Region profile path.")
@@ -135,10 +202,28 @@ def main() -> None:
     print("build=journey-visual-guard-20260520a")
     print(f"game window: {window.title} ({window.rect.width}x{window.rect.height})")
 
+    # F12 pause hotkey: lets the operator stop the bot's actions mid-run and
+    # reclaim control without killing the process. Falls back gracefully (warns
+    # and runs unpaused) if the hotkey can't be registered.
+    pause = PauseController()
+    install_pause_hotkey(pause, key="f12")
+
     iteration = 0
     consecutive_character_confirms = 0
+    was_paused = False
     try:
         while args.max_iterations == 0 or iteration < args.max_iterations:
+            # While paused, do nothing but idle: no capture, no decision, no
+            # click. Print once per second so it's clear the bot is waiting.
+            if pause.paused:
+                was_paused = True
+                print("已暂停，按F12继续")
+                time.sleep(1.0)
+                continue
+            if was_paused:
+                print("已恢复")
+                was_paused = False
+
             iteration += 1
 
             # Hide console, capture, restore
