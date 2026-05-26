@@ -18,14 +18,29 @@ class OcrResult:
     confidence: float
 
 
+@dataclass(frozen=True)
+class OcrLine:
+    """A single detected text block with its bounding box (x1, y1, x2, y2),
+    in the coordinate space of the image passed to read_lines()."""
+    text: str
+    confidence: float
+    box: tuple[int, int, int, int]
+
+
 class OcrEngine(Protocol):
     def read_text(self, image: Image.Image) -> OcrResult:
+        raise NotImplementedError
+
+    def read_lines(self, image: Image.Image) -> list[OcrLine]:
         raise NotImplementedError
 
 
 class NoopOcrEngine:
     def read_text(self, image: Image.Image) -> OcrResult:
         return OcrResult(text="", confidence=0.0)
+
+    def read_lines(self, image: Image.Image) -> list[OcrLine]:
+        return []
 
 
 class PaddleOcrEngine:
@@ -84,3 +99,46 @@ class PaddleOcrEngine:
         if not texts:
             return OcrResult(text="", confidence=0.0)
         return OcrResult(text=" ".join(texts), confidence=sum(confidences) / len(confidences))
+
+    def read_lines(self, image: Image.Image) -> list[OcrLine]:
+        """Return each detected text block with its bounding box.
+
+        Lets callers locate text by position — needed for lists that scroll to
+        arbitrary, non-row-aligned offsets, where fixed-region OCR reads only the
+        sliced gaps between rows.
+        """
+        import numpy as np
+
+        result = self._engine.ocr(np.array(image))
+        res = None
+        if isinstance(result, list) and result and hasattr(result[0], "json"):
+            data = result[0].json if isinstance(result[0].json, dict) else result[0].json()
+            res = data.get("res", data)
+        elif isinstance(result, list) and result and isinstance(result[0], dict) and "rec_texts" in result[0]:
+            res = result[0]
+        if not isinstance(res, dict):
+            return []
+
+        texts = res.get("rec_texts") or []
+        scores = res.get("rec_scores") or []
+        boxes = res.get("rec_boxes")
+        if boxes is None:
+            boxes = res.get("rec_polys") or res.get("dt_polys")
+        if boxes is None:
+            return []
+
+        lines: list[OcrLine] = []
+        for i, text in enumerate(texts):
+            if not text or i >= len(boxes):
+                continue
+            arr = np.array(boxes[i])
+            if arr.ndim == 1 and arr.size >= 4:
+                x1, y1, x2, y2 = int(arr[0]), int(arr[1]), int(arr[2]), int(arr[3])
+            elif arr.ndim == 2 and arr.shape[0] >= 1:
+                xs, ys = arr[:, 0], arr[:, 1]
+                x1, y1, x2, y2 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+            else:
+                continue
+            conf = float(scores[i]) if i < len(scores) else 0.0
+            lines.append(OcrLine(text=str(text), confidence=conf, box=(x1, y1, x2, y2)))
+        return lines

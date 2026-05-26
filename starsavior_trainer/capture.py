@@ -43,6 +43,95 @@ def capture_screen() -> Image.Image:
     return ImageGrab.grab()
 
 
+_PW_RENDERFULLCONTENT = 2  # PrintWindow flag for DWM/hardware-accelerated content
+
+
+class _BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [
+        ("biSize", wintypes.DWORD),
+        ("biWidth", ctypes.c_long),
+        ("biHeight", ctypes.c_long),
+        ("biPlanes", wintypes.WORD),
+        ("biBitCount", wintypes.WORD),
+        ("biCompression", wintypes.DWORD),
+        ("biSizeImage", wintypes.DWORD),
+        ("biXPelsPerMeter", ctypes.c_long),
+        ("biYPelsPerMeter", ctypes.c_long),
+        ("biClrUsed", wintypes.DWORD),
+        ("biClrImportant", wintypes.DWORD),
+    ]
+
+
+def _capture_client_via_printwindow(hwnd: int) -> Image.Image | None:
+    """Capture a window's client area via PrintWindow — robust to occlusion.
+
+    PrintWindow copies the window's *own* pixels into a bitmap regardless of
+    z-order, so it works even when the game is behind another window or not in
+    the foreground — unlike ImageGrab, which only sees whatever is physically on
+    screen at those coordinates (and so silently captures the wrong window when
+    SetForegroundWindow is blocked). PW_RENDERFULLCONTENT (flag 2) is required
+    for DWM/hardware-accelerated windows like Unity games.
+
+    Renders the whole window (incl. title bar / borders) then crops out the
+    client area, so it is correct for both borderless and windowed modes.
+    Returns None if PrintWindow fails or yields an all-black frame, so the
+    caller can fall back to a screen grab.
+    """
+    user32 = ctypes.windll.user32
+    gdi32 = ctypes.windll.gdi32
+
+    win_rect = wintypes.RECT()
+    if not user32.GetWindowRect(hwnd, ctypes.byref(win_rect)):
+        return None
+    win_w = win_rect.right - win_rect.left
+    win_h = win_rect.bottom - win_rect.top
+
+    client_rect = wintypes.RECT()
+    user32.GetClientRect(hwnd, ctypes.byref(client_rect))
+    client_w = client_rect.right
+    client_h = client_rect.bottom
+    if win_w <= 0 or win_h <= 0 or client_w <= 0 or client_h <= 0:
+        return None
+
+    # Client top-left offset within the full window (title bar + border width).
+    origin = wintypes.POINT(0, 0)
+    user32.ClientToScreen(hwnd, ctypes.byref(origin))
+    off_x = origin.x - win_rect.left
+    off_y = origin.y - win_rect.top
+
+    window_dc = user32.GetWindowDC(hwnd)
+    if not window_dc:
+        return None
+    mem_dc = gdi32.CreateCompatibleDC(window_dc)
+    bitmap = gdi32.CreateCompatibleBitmap(window_dc, win_w, win_h)
+    try:
+        gdi32.SelectObject(mem_dc, bitmap)
+        if not user32.PrintWindow(hwnd, mem_dc, _PW_RENDERFULLCONTENT):
+            return None
+
+        header = _BITMAPINFOHEADER()
+        header.biSize = ctypes.sizeof(_BITMAPINFOHEADER)
+        header.biWidth = win_w
+        header.biHeight = -win_h  # negative => top-down rows
+        header.biPlanes = 1
+        header.biBitCount = 32
+        header.biCompression = 0  # BI_RGB
+
+        buffer = (ctypes.c_char * (win_w * win_h * 4))()
+        if not gdi32.GetDIBits(mem_dc, bitmap, 0, win_h, buffer, ctypes.byref(header), 0):
+            return None
+        full = Image.frombuffer("RGB", (win_w, win_h), buffer, "raw", "BGRX", 0, 1)
+    finally:
+        gdi32.DeleteObject(bitmap)
+        gdi32.DeleteDC(mem_dc)
+        user32.ReleaseDC(hwnd, window_dc)
+
+    client = full.crop((off_x, off_y, off_x + client_w, off_y + client_h))
+    if client.convert("L").getextrema() == (0, 0):
+        return None  # all-black capture -> signal caller to fall back
+    return client
+
+
 def capture_window(title_contains: str, target_width: int = 2560, target_height: int = 1440) -> tuple[Image.Image, WindowInfo]:
     """Capture the game window client area and scale to target resolution.
 
@@ -65,9 +154,15 @@ def capture_window(title_contains: str, target_width: int = 2560, target_height:
     pt = wintypes.POINT(0, 0)
     ctypes.windll.user32.ClientToScreen(window.hwnd, ctypes.byref(pt))
 
-    _bring_to_front(window.hwnd)
-    full = ImageGrab.grab()
-    client_img = full.crop((pt.x, pt.y, pt.x + client_w, pt.y + client_h))
+    # Capture via PrintWindow: grabs the game's own pixels even when the window
+    # is covered or unfocused, so capture itself no longer needs to steal focus.
+    # Fall back to a screen grab + crop only if PrintWindow fails (that path does
+    # need the window visible, so activate it first).
+    client_img = _capture_client_via_printwindow(window.hwnd)
+    if client_img is None:
+        activate_window(window.hwnd)
+        full = ImageGrab.grab()
+        client_img = full.crop((pt.x, pt.y, pt.x + client_w, pt.y + client_h))
 
     if (client_w, client_h) != (target_width, target_height):
         client_img = client_img.resize((target_width, target_height), Image.LANCZOS)
@@ -118,10 +213,50 @@ def list_windows() -> list[WindowInfo]:
     return windows
 
 
-def _bring_to_front(hwnd: int) -> None:
+def activate_window(hwnd: int) -> None:
+    """Force a window to the foreground so it receives synthetic mouse input.
+
+    A plain SetForegroundWindow is refused by Windows when the caller isn't the
+    current foreground process (anti focus-stealing). We use the standard
+    AttachThreadInput trick: temporarily attach our input queue to the current
+    foreground thread (and the target's) to lift that restriction.
+
+    This is required for clicks/scrolls to actually reach the game: Unity titles
+    only process mouse input while they are the *active* window, and Windows
+    routes the mouse-wheel message to the focused window — so the game must be
+    foreground at the instant pyautogui sends the event.
+    """
     import time
-    ctypes.windll.user32.SetForegroundWindow(hwnd)
-    time.sleep(0.3)
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.c_void_p)
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    SW_RESTORE = 9
+
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, SW_RESTORE)
+
+    foreground = user32.GetForegroundWindow()
+    current_thread = kernel32.GetCurrentThreadId()
+    target_thread = user32.GetWindowThreadProcessId(hwnd, None)
+    fg_thread = user32.GetWindowThreadProcessId(foreground, None) if foreground else 0
+
+    attached_fg = attached_target = False
+    try:
+        if fg_thread and fg_thread != current_thread:
+            attached_fg = bool(user32.AttachThreadInput(current_thread, fg_thread, True))
+        if target_thread and target_thread != current_thread:
+            attached_target = bool(user32.AttachThreadInput(current_thread, target_thread, True))
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+    finally:
+        if attached_target:
+            user32.AttachThreadInput(current_thread, target_thread, False)
+        if attached_fg:
+            user32.AttachThreadInput(current_thread, fg_thread, False)
+    time.sleep(0.12)
 
 
 def _enum_windows(callback: Callable[[int], bool]) -> None:

@@ -22,7 +22,7 @@ os.environ.setdefault("FLAGS_use_mkldnn", "0")
 for _noisy in ("ppocr", "paddle", "paddlex", "PIL"):
     logging.getLogger(_noisy).setLevel(logging.ERROR)
 
-from starsavior_trainer.capture import capture_window, list_windows, save_image, WindowInfo
+from starsavior_trainer.capture import activate_window, capture_window, list_windows, save_image, WindowInfo
 from starsavior_trainer.classifier import (
     classify_by_ocr,
     classify_by_blue_button,
@@ -60,6 +60,7 @@ from starsavior_trainer.screen_reader import (
     parse_blessing_choice,
     parse_blessing_setup,
     parse_character_select,
+    parse_character_select_bbox,
     parse_commission_select,
     parse_confirm_dialog,
     parse_dialogue_scene,
@@ -184,8 +185,6 @@ def main() -> None:
     ocr = _create_ocr(args.use_paddle)
     blue_detector = BlueButtonDetector() if (args.blue_mode or args.hybrid_mode) else None
 
-    console_hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-
     if args.hybrid_mode:
         mode_label = "hybrid"
         args.use_paddle = True  # Hybrid mode needs real OCR
@@ -210,6 +209,7 @@ def main() -> None:
 
     iteration = 0
     consecutive_character_confirms = 0
+    last_character_click_target = None
     was_paused = False
     try:
         while args.max_iterations == 0 or iteration < args.max_iterations:
@@ -226,12 +226,10 @@ def main() -> None:
 
             iteration += 1
 
-            # Hide console, capture, restore
-            ctypes.windll.user32.ShowWindow(console_hwnd, 0)  # SW_HIDE
-            time.sleep(0.15)
-
+            # Capture via PrintWindow (inside capture_window): works even when the
+            # game is covered/unfocused, so we no longer hide the console or steal
+            # focus just to grab a frame (dry-run is fully non-invasive now).
             screenshot, client_window = capture_window(args.window_title)
-            ctypes.windll.user32.ShowWindow(console_hwnd, 5)  # SW_SHOW
             profile = scale_region_profile(base_profile, screenshot.size)
             reader = RegionOcrReader(profile, ocr)
 
@@ -299,19 +297,33 @@ def main() -> None:
             if action is None:
                 action = policy.decide(state, observation)
             if observation.screen == Screen.CHARACTER_SELECT and action.kind == "click":
-                consecutive_character_confirms += 1
                 character_path = Path("screenshots/live_character_select_latest.png")
                 save_image(screenshot, character_path)
-                if consecutive_character_confirms >= 2:
-                    action = Action("pause", None, f"repeated character confirm blocked, saved {character_path}")
+                # Only a *repeated identical* click means we're genuinely stuck.
+                # The normal flow clicks two different targets — select the
+                # character row, then the 选择 confirm button — which is progress,
+                # not a loop, so it must not be blocked.
+                if action.target == last_character_click_target:
+                    consecutive_character_confirms += 1
+                else:
+                    consecutive_character_confirms = 1
+                    last_character_click_target = action.target
+                if consecutive_character_confirms >= 3:
+                    action = Action("pause", None, f"repeated identical character click blocked, saved {character_path}")
             else:
                 consecutive_character_confirms = 0
+                last_character_click_target = None
             logger.info(f"decision: {action.kind} target={action.target} reason={action.reason}")
             screen_action = map_action_to_rect(action, screenshot.size, client_window.rect)
             if action.target is not None:
                 print(f"  screen_target={screen_action.target}")
 
-            # Execute
+            # Execute. Activate the game first so the synthetic click/scroll lands
+            # on it: Unity ignores input while inactive, and the mouse-wheel message
+            # is routed to the focused window. Only when actually executing, so
+            # dry-run / diagnosis stays non-invasive.
+            if args.execute and action.kind in ("click", "move", "scroll"):
+                activate_window(client_window.hwnd)
             result = executor.execute(screen_action)
             logger.info(f"executed: {result.kind} point={result.point} executed={result.executed}")
 
@@ -337,6 +349,14 @@ def _read_screen_payload_ocr(
 ) -> object | None:
     # Dispatch through the screen registry: each handler declares which region
     # prefixes to OCR and how to parse them, replacing the old per-screen if/elif.
+    # Character select scrolls by dragging to arbitrary (half-row) offsets, so
+    # fixed-row OCR fails. Locate names by OCR bounding box instead.
+    if screen == Screen.CHARACTER_SELECT:
+        payload = parse_character_select_bbox(image, profile, reader.ocr)
+        if verbose and payload is not None:
+            print(f"  bbox names: {[o.name for o in payload.options if o.name != payload.selected_name]}")
+        return payload
+
     handler = HANDLERS.get(screen)
     if handler is None or handler.ocr_prefixes is None:
         return None

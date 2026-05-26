@@ -51,10 +51,47 @@ class PyAutoGuiExecutor:
         if action.kind == "move":
             return ExecutionResult(True, action.kind, point, action.reason)
         if action.kind == "scroll":
-            self._pyautogui.scroll(action.scroll_clicks)
+            self._drag_scroll(point, action.scroll_clicks)
             return ExecutionResult(True, action.kind, point, action.reason)
         self._pyautogui.click()
         return ExecutionResult(True, action.kind, point, action.reason)
+
+    def _drag_scroll(self, anchor: tuple[int, int], clicks: int, pixels: int = 380, steps: int = 25) -> None:
+        """Scroll a list with a real press-hold-drag.
+
+        This game ignores synthetic mouse-wheel events, so we drag instead. We
+        use low-level ``mouse_event`` (not pyautogui) because pyautogui moves the
+        cursor with SetCursorPos, which produces no real motion trace — the game
+        then reads the gesture as a plain click rather than a drag. Sending
+        relative MOUSEEVENTF_MOVE deltas while the left button is held gives a
+        genuine drag the game accepts.
+
+        ``clicks < 0`` means "scroll down" (look further down the list) → drag the
+        content upward; ``clicks > 0`` drags downward.
+        """
+        import ctypes
+        import time
+
+        MOUSEEVENTF_MOVE = 0x0001
+        MOUSEEVENTF_LEFTDOWN = 0x0002
+        MOUSEEVENTF_LEFTUP = 0x0004
+        user32 = ctypes.windll.user32
+
+        dy_total = -pixels if clicks < 0 else pixels
+        user32.SetCursorPos(int(anchor[0]), int(anchor[1]))
+        time.sleep(0.2)
+        user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+        time.sleep(0.3)  # hold before moving so the game registers a press, not a tap
+        step_dy = int(dy_total / steps) or (-1 if dy_total < 0 else 1)
+        for _ in range(steps):
+            user32.mouse_event(MOUSEEVENTF_MOVE, 0, step_dy, 0, 0)
+            time.sleep(0.015)
+        time.sleep(0.2)
+        user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+        time.sleep(0.1)
+        # Snap the cursor back to the anchor so repeated drags don't walk it out
+        # of the game window (each drag moves relatively from the current point).
+        user32.SetCursorPos(int(anchor[0]), int(anchor[1]))
 
 
 def map_action_to_rect(action: Action, source_resolution: tuple[int, int], dest_rect: Rect) -> Action:

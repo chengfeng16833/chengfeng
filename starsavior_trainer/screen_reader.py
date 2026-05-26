@@ -302,6 +302,81 @@ def parse_character_select(
     )
 
 
+def parse_character_select_bbox(
+    image: Image.Image,
+    profile: RegionProfile,
+    ocr: OcrEngine,
+) -> CharacterSelect | None:
+    """Build the character-select payload by locating names via OCR bounding
+    boxes instead of fixed row regions.
+
+    The list scrolls by dragging and stops at arbitrary (half-row) offsets, so
+    the fixed character_option_N regions read only the sliced gaps between rows.
+    Here we OCR the whole list column once and use each detected block's box to
+    drop a clickable target on the actual name, wherever it landed.
+    """
+    confirm_button = profile.regions.get("character_select_button")
+    if confirm_button is None:
+        return None
+
+    # Selected character (left panel).
+    sel_rect = profile.regions.get("character_selected_name")
+    selected_name = None
+    if sel_rect is not None:
+        sel_text = ocr.read_text(crop_region(image, sel_rect))
+        if sel_text.text and sel_text.confidence > 0.4:
+            selected_name = extract_character_name(sel_text.text) or _or_none(sel_text.text)
+
+    # List area = envelope of the 7 fixed option slots (covers the whole column).
+    first = profile.regions.get("character_option_1")
+    last = profile.regions.get("character_option_7")
+    if first is None or last is None:
+        return None
+    lx, ly = first.x, first.y
+    lw = first.width
+    lh = (last.y + last.height) - first.y
+    list_region = Rect(lx, ly, lw, lh)
+
+    options: list[CharacterOption] = []
+    seen: set[str] = set()
+    for line in ocr.read_lines(crop_region(image, list_region)):
+        name = extract_character_name(line.text)
+        if not name or len(name) < 2 or name in seen:
+            continue  # len<2 drops single-char noise (e.g. '双' from a level badge)
+        seen.add(name)
+        x1, y1, x2, y2 = line.box
+        cx = lx + (x1 + x2) // 2
+        cy = ly + (y1 + y2) // 2
+        target = Rect(max(cx - 90, 0), max(cy - 28, 0), 180, 56)
+        options.append(
+            CharacterOption(
+                name=name, rank=None, stars=None, specialty=None,
+                selected=(name == selected_name), target=target,
+            )
+        )
+
+    # Always include the left-panel selected character as a fallback target.
+    selected_target = sel_rect or confirm_button
+    selected_option = CharacterOption(
+        name=selected_name or "selected_character", rank=None, stars=None,
+        specialty=None, selected=True, target=selected_target,
+    )
+    if not any(opt.name == selected_option.name for opt in options):
+        options.insert(0, selected_option)
+
+    # Dragging can always move the list further, so as long as we recognised at
+    # least one list name we keep scrolling; the policy's end-detection + cap
+    # decide when to stop.
+    can_scroll = sum(1 for opt in options if opt.target != selected_target) >= 1
+
+    return CharacterSelect(
+        options=options,
+        confirm_button=confirm_button,
+        selected_name=selected_option.name,
+        can_scroll=can_scroll,
+    )
+
+
 def parse_blessing_setup(
     region_texts: Iterable[RegionText],
     profile: RegionProfile,

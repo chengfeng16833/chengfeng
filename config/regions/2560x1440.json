@@ -30,7 +30,7 @@
 
     "character_select_anchor_title": [330, 66, 230, 58],
     "character_selected_rarity_area": [250, 315, 270, 60],
-    "character_selected_name": [258, 398, 260, 56],
+    "character_selected_name": [258, 455, 320, 60],
     "character_selected_specialty": [100, 285, 150, 160],
     "character_stat_power": [98, 638, 395, 48],
     "character_stat_stamina": [98, 704, 395, 48],
