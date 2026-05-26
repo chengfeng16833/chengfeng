@@ -180,6 +180,44 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertEqual(action.kind, "pause")
         self.assertIn("芙蕾", action.reason)
 
+    def _char_sel(self, names: list[str]) -> CharacterSelect:
+        opts = [
+            CharacterOption(n, None, None, None, False, Rect(2030, 250 + i * 144, 458, 122))
+            for i, n in enumerate(names)
+        ]
+        return CharacterSelect(options=opts, confirm_button=Rect(2038, 1305, 448, 75), selected_name=None, can_scroll=True)
+
+    def test_character_select_reverses_scroll_when_list_end_reached(self) -> None:
+        # Regression for the live-run infinite-scroll bug: the target may be ABOVE
+        # the starting position. Scroll down first; when the view stops changing
+        # (list end), reverse to up so above-start entries get searched too.
+        policy = TrainerPolicy()
+        state = GameState(desired_character="罗莎莉亚")
+        a = self._char_sel(["a", "b", "c", "d", "e", "f", "g"])
+        b = self._char_sel(["d", "e", "f", "g", "h", "i", "j"])
+
+        first = policy.decide_character_select(a, state)
+        self.assertEqual(first.kind, "scroll")
+        self.assertLess(first.scroll_clicks, 0)  # down
+        policy.decide_character_select(b, state)  # view changed → keep going down
+        reversed_action = policy.decide_character_select(b, state)  # unchanged → reverse to up
+        self.assertGreater(reversed_action.scroll_clicks, 0)  # up
+        # No oscillation: stays going up while the view keeps not changing.
+        again = policy.decide_character_select(b, state)
+        self.assertGreater(again.scroll_clicks, 0)
+
+    def test_character_select_pauses_after_scroll_cap(self) -> None:
+        # Bounded search: after a full bidirectional scan it stops (pauses) instead
+        # of scrolling forever.
+        policy = TrainerPolicy()
+        state = GameState(desired_character="罗莎莉亚")
+        actions = [
+            policy.decide_character_select(self._char_sel([f"x{i}", f"y{i}", "c", "d", "e", "f", "g"]), state)
+            for i in range(34)
+        ]
+        self.assertTrue(all(a.kind == "scroll" for a in actions[:30]))
+        self.assertTrue(all(a.kind == "pause" for a in actions[30:]))
+
     def test_build_profile_changes_training_score(self) -> None:
         policy = TrainerPolicy()
         power = TrainingChoice("power", 10, "none", 0, Rect(0, 0, 10, 10))

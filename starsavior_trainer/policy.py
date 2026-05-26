@@ -87,6 +87,10 @@ DEFAULT_EVENT_KEYWORDS = {
 # heuristic instead.
 _EVENT_DEFAULT_PROFILES = ("default", "default_safe", "safe_mode")
 
+# Max character-list scrolls before giving up (≈ half down, half up). The list is
+# short enough that this fully covers it in each direction.
+_CHARACTER_SCROLL_CAP = 30
+
 _EVENTS_PATH = Path(__file__).resolve().parents[1] / "config" / "events.json"
 _EVENT_DB_CACHE: list[dict] | None = None
 
@@ -220,10 +224,21 @@ class TrainerPolicy:
         self._needs_rest: bool = False
         # Two-step rest: remembers the option we selected so the next call confirms.
         self._pending_rest: Rect | None = None
+        # Character-list search state (bidirectional, bounded — avoids the
+        # infinite one-direction scroll that missed a target above the start).
+        self._char_scroll_count: int = 0
+        self._char_scroll_down: bool = True
+        self._char_reversed: bool = False
+        self._char_seen_names: frozenset[str] | None = None
 
     def decide(self, state: GameState, observation: Observation) -> Action:
         if observation.confidence < self.config.min_screen_confidence:
             return Action("pause", None, f"low screen confidence: {observation.confidence:.2f}")
+
+        # Leaving the character-select screen ends any in-progress list search, so
+        # a later visit (e.g. the next journey) starts a fresh bidirectional scan.
+        if observation.screen != Screen.CHARACTER_SELECT:
+            self._reset_character_scroll()
 
         # Dispatch through the screen registry instead of a hardcoded if/elif
         # chain. Each handler.decide is a verbatim copy of the branch that used
@@ -250,6 +265,12 @@ class TrainerPolicy:
         strategic_bias = self.config.training_bias_by_profile.get(profile, {}).get(choice.name, 0)
         return choice.stat_gain + self.config.ring_bonus.get(choice.ring, 0) - fail_penalty + strategic_bias
 
+    def _reset_character_scroll(self) -> None:
+        self._char_scroll_count = 0
+        self._char_scroll_down = True
+        self._char_reversed = False
+        self._char_seen_names = None
+
     def decide_character_select(self, selection: CharacterSelect, state: GameState) -> Action:
         if state.desired_character:
             # Two passes: prefer an exact name match, then fall back to a tolerant
@@ -263,19 +284,38 @@ class TrainerPolicy:
                 None,
             )
             if match is not None:
+                self._reset_character_scroll()
                 if match.selected:
                     return Action("click", selection.confirm_button, f"confirm desired character {match.name}")
                 return Action("click", match.target, f"select desired character {match.name}")
-            # Character not visible — scroll the list down to reveal more entries.
+
+            # Not visible — search the list in BOTH directions (the target may be
+            # above the starting position). Scroll down first, then reverse to up
+            # when we hit the list end (view stops changing) or at the halfway cap.
             scroll_target = _character_list_scroll_target(selection)
-            if scroll_target is not None and selection.can_scroll:
+            current_names = frozenset(option.name for option in selection.options)
+            if scroll_target is not None and selection.can_scroll and self._char_scroll_count < _CHARACTER_SCROLL_CAP:
+                # Reverse direction exactly once: when the list stops changing (end
+                # reached) or at the halfway cap, whichever comes first. Reversing
+                # only once avoids oscillating in place if a scroll doesn't move.
+                end_reached = self._char_seen_names is not None and current_names == self._char_seen_names
+                if not self._char_reversed and (end_reached or self._char_scroll_count >= _CHARACTER_SCROLL_CAP // 2):
+                    self._char_scroll_down = not self._char_scroll_down
+                    self._char_reversed = True
+                self._char_seen_names = current_names
+                self._char_scroll_count += 1
+                clicks = -3 if self._char_scroll_down else 3
+                direction = "down" if self._char_scroll_down else "up"
                 return Action(
                     "scroll",
                     scroll_target,
-                    f"scroll character list to find: {state.desired_character}",
-                    scroll_clicks=-3,
+                    f"scroll character list {direction} to find: {state.desired_character}",
+                    scroll_clicks=clicks,
                 )
-            return Action("pause", None, f"desired character not found: {state.desired_character}")
+            # Searched the whole list both ways (or can't scroll) and still no match.
+            # Stay paused (do NOT reset here) so we stop instead of looping; leaving
+            # the screen resets the search state for the next visit.
+            return Action("pause", None, f"desired character not found after scrolling: {state.desired_character}")
 
         selected = _selected_character(selection.options, selection.selected_name)
         if selected is not None:
