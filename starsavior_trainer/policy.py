@@ -219,101 +219,16 @@ class TrainerPolicy:
         if observation.confidence < self.config.min_screen_confidence:
             return Action("pause", None, f"low screen confidence: {observation.confidence:.2f}")
 
-        if observation.screen == Screen.INITIAL:
-            return Action("click", self.config.start_button, "initial screen, click start")
-        if observation.screen == Screen.CHARACTER_SELECT:
-            if not isinstance(observation.payload, CharacterSelect):
-                return Action("pause", None, "character select screen missing character observation")
-            return self.decide_character_select(observation.payload, state)
-        if observation.screen == Screen.BLESSING_SETUP:
-            if not isinstance(observation.payload, BlessingSetup):
-                return Action("pause", None, "blessing setup screen missing setup observation")
-            return self.decide_blessing_setup(observation.payload)
-        if observation.screen == Screen.BLESSING_CHOICE:
-            if not isinstance(observation.payload, BlessingChoice):
-                return Action("pause", None, "blessing choice screen missing options")
-            return self.decide_blessing_choice(observation.payload, state)
-        if observation.screen == Screen.JOURNEY_START:
-            if not isinstance(observation.payload, JourneyStart):
-                return Action("pause", None, "journey start screen missing start button")
-            return self.decide_journey_start(observation.payload)
-        if observation.screen == Screen.CONFIRM_DIALOG:
-            if not isinstance(observation.payload, ConfirmDialog):
-                return Action("pause", None, "confirm dialog missing button observation")
-            return self.decide_confirm_dialog(observation.payload)
-        if observation.screen == Screen.EVENT_FAST_FORWARD_SETTING:
-            if not isinstance(observation.payload, EventFastForwardSetting):
-                return Action("pause", None, "event fast-forward setting missing option observation")
-            return self.decide_event_fast_forward_setting(observation.payload)
-        if observation.screen == Screen.DIALOGUE:
-            if isinstance(observation.payload, DialogueScene):
-                return self.decide_dialogue(observation.payload)
-            return Action("click", self.config.skip_button, "dialogue screen, click skip")
-        if observation.screen == Screen.TRAINING_HUB:
-            if isinstance(observation.payload, TrainingHubStatus):
-                if observation.payload.has_commission_alert and observation.payload.commission_button is not None:
-                    return Action("click", observation.payload.commission_button, "training hub, commission alert")
-                if observation.payload.has_shop_alert and observation.payload.shop_button is not None:
-                    return Action("click", observation.payload.shop_button, "training hub, shop alert")
-                if (
-                    observation.payload.skill_button is not None
-                    and (
-                        observation.payload.can_learn_skill
-                        or (
-                            observation.payload.potential_points is not None
-                            and observation.payload.potential_points >= self.config.min_skill_points
-                        )
-                    )
-                ):
-                    return Action("click", observation.payload.skill_button, "training hub, open skill learning")
-                if observation.payload.training_button is not None:
-                    return Action("click", observation.payload.training_button, "training hub, enter training")
-            return Action("click", self.config.start_button, "training hub, click training")
-        if observation.screen == Screen.TRAINING_SELECT:
-            if not _is_iterable_of(observation.payload, TrainingChoice):
-                return Action("pause", None, "training screen missing training choices")
-            return self.decide_training(observation.payload, state)
-        if observation.screen == Screen.REST_SUBMENU:
-            if not isinstance(observation.payload, RestSubmenu):
-                return Action("pause", None, "rest screen missing submenu observation")
-            return self.decide_rest(observation.payload)
-        if observation.screen == Screen.EVENT_CHOICE:
-            if not _is_iterable_of(observation.payload, EventOption):
-                return Action("pause", None, "event screen missing options")
-            return self.decide_event(observation.payload, state)
-        if observation.screen == Screen.RELIC_CHOICE:
-            if isinstance(observation.payload, RelicChoice):
-                return self.decide_relic_choice(observation.payload)
-            if not _is_iterable_of(observation.payload, RelicOption):
-                return Action("pause", None, "relic screen missing options")
-            return self.decide_relic(observation.payload)
-        if observation.screen == Screen.COMMISSION_SELECT:
-            if not isinstance(observation.payload, CommissionChoice):
-                self._pending_commission = None
-                return Action("pause", None, "commission screen missing options")
-            return self.decide_commission(observation.payload, state)
-        if observation.screen == Screen.SHOP:
-            if not _is_iterable_of(observation.payload, ShopItem):
-                return Action("pause", None, "shop screen missing item list")
-            return self.decide_shop(observation.payload)
-        if observation.screen == Screen.BATTLE:
-            if isinstance(observation.payload, BattleScene):
-                if observation.payload.confirm_active and observation.payload.confirm_button is not None:
-                    return Action("click", observation.payload.confirm_button, "battle, accept battle")
-                return Action("click", observation.payload.skip_button, "battle, open battle entry")
-            return Action("click", self.config.skip_button, "battle, click default action")
-        if observation.screen == Screen.SKILL_SELECT:
-            if _is_iterable_of(observation.payload, SkillOption):
-                return self.decide_skill(observation.payload, state)
-            return Action("pause", None, "skill select screen missing options")
-        if observation.screen == Screen.POST_TRAINING:
-            if isinstance(observation.payload, PostTrainingResult) and observation.payload.skip_button is not None:
-                return Action("click", observation.payload.skip_button, "post-training, click skip")
-            return Action("click", self.config.skip_button, "post-training, click skip")
-        if observation.screen == Screen.REGION_MOVE:
-            return Action("click", self.config.move_button, "region move screen, click move")
+        # Dispatch through the screen registry instead of a hardcoded if/elif
+        # chain. Each handler.decide is a verbatim copy of the branch that used
+        # to live here and receives this policy for config/instance-state access.
+        # Imported lazily to avoid an import cycle (screens/__init__ imports policy).
+        from starsavior_trainer.screens import HANDLERS
 
-        return Action("pause", None, "unknown screen")
+        handler = HANDLERS.get(observation.screen)
+        if handler is None:
+            return Action("pause", None, "unknown screen")
+        return handler.decide(observation, state, self)
 
     def training_score(self, choice: TrainingChoice, state: GameState | None = None) -> float:
         if choice.fail_rate > self.config.max_training_fail_rate:

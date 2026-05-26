@@ -77,6 +77,7 @@ from starsavior_trainer.screen_reader import (
     parse_relic_choice,
 )
 from starsavior_trainer.vision import BlueButtonDetector, RingColorDetector
+from starsavior_trainer.screens import HANDLERS
 
 logger = get_logger("live_loop")
 
@@ -249,58 +250,18 @@ def _read_screen_payload_ocr(
     reader: RegionOcrReader,
     verbose: bool,
 ) -> object | None:
-    prefix = _screen_to_prefix(screen)
-    if prefix is None:
+    # Dispatch through the screen registry: each handler declares which region
+    # prefixes to OCR and how to parse them, replacing the old per-screen if/elif.
+    handler = HANDLERS.get(screen)
+    if handler is None or handler.ocr_prefixes is None:
         return None
 
-    region_texts = reader.read_prefixes(image, [prefix], max_area=160000)
+    region_texts = reader.read_prefixes(image, handler.ocr_prefixes, max_area=160000)
     if verbose:
         for rt in region_texts:
             print(f"  ocr {rt.name}: '{rt.text}' ({rt.confidence:.2f})")
 
-    if screen == Screen.DIALOGUE:
-        return parse_dialogue_scene(region_texts, profile)
-    elif screen == Screen.CHARACTER_SELECT:
-        return parse_character_select(region_texts, profile)
-    elif screen == Screen.BLESSING_SETUP:
-        return parse_blessing_setup(region_texts, profile, image)
-    elif screen == Screen.BLESSING_CHOICE:
-        return parse_blessing_choice(region_texts, profile, image)
-    elif screen == Screen.JOURNEY_START:
-        return parse_journey_start(region_texts, profile)
-    elif screen == Screen.CONFIRM_DIALOG:
-        return parse_confirm_dialog(region_texts, profile)
-    elif screen == Screen.EVENT_FAST_FORWARD_SETTING:
-        return parse_event_fast_forward_setting(region_texts, profile, image)
-    elif screen == Screen.TRAINING_HUB:
-        return parse_training_hub(region_texts, profile, image)
-    elif screen == Screen.TRAINING_SELECT:
-        return parse_training_select(region_texts, profile, image)
-    elif screen == Screen.REST_SUBMENU:
-        return parse_rest_submenu(region_texts, profile)
-    elif screen == Screen.EVENT_CHOICE:
-        event_rts = reader.read_prefixes(image, ["event_choice", "training_direction"], max_area=160000)
-        direction = parse_training_direction(event_rts, profile)
-        if direction is not None:
-            return direction
-        return parse_event_choice(event_rts, profile)
-    elif screen == Screen.COMMISSION_SELECT:
-        return parse_commission_select(region_texts, profile, image)
-    elif screen == Screen.SHOP:
-        return parse_shop(region_texts, profile, image)
-    elif screen == Screen.REGION_MOVE:
-        return parse_region_move(region_texts, profile)
-    elif screen == Screen.BATTLE:
-        return parse_battle(region_texts, profile, image)
-    elif screen == Screen.SKILL_SELECT:
-        return parse_skill_select(region_texts, profile)
-    elif screen == Screen.POST_TRAINING:
-        return parse_post_training(region_texts, profile)
-    elif screen == Screen.RELIC_CHOICE:
-        relic_texts = reader.read_prefixes(image, ["relic_choice"], max_area=160000)
-        return parse_relic_choice(relic_texts, profile, image)
-
-    return None
+    return handler.parse(region_texts, profile, image)
 
 
 # ---------------------------------------------------------------------------
@@ -320,31 +281,22 @@ def _read_screen_payload_blue(
     For simple screens the policy just clicks a known button — no payload needed.
     For complex screens we use color-based heuristics (ring detection, red text, etc).
     """
-    if screen == Screen.TRAINING_HUB:
-        return _training_hub_blue(image, profile)
-    elif screen == Screen.TRAINING_SELECT:
-        return _training_select_blue(image, profile, verbose)
-    elif screen == Screen.REST_SUBMENU:
-        return _rest_submenu_blue(image, profile, detector, verbose)
-    elif screen == Screen.COMMISSION_SELECT:
-        return _commission_select_blue(image, profile, verbose)
-    elif screen == Screen.RELIC_CHOICE:
-        return _relic_choice_blue(profile, detector, image)
-    elif screen == Screen.SHOP:
-        # Shop needs item names/prices — skip without OCR.
-        if verbose:
-            print("  shop: skipping (no OCR, can't read items)")
+    # Dispatch through a local builder table instead of a per-screen if/elif.
+    # (Blue builders live in this module; they stay local for now and move into
+    # the screen handlers during the deferred physical migration — see REFACTOR.md.)
+    builder = _BLUE_PARSERS.get(screen)
+    if builder is None:
+        # Simple screens: INITIAL, CHARACTER_SELECT, BLESSING_SETUP, BLESSING_CHOICE,
+        # JOURNEY_START, CONFIRM_DIALOG, EVENT_FAST_FORWARD_SETTING, REGION_MOVE —
+        # policy clicks a hardcoded button; no payload needed.
         return None
-    elif screen == Screen.EVENT_CHOICE:
-        return _event_choice_blue(image, profile, verbose)
-    elif screen == Screen.DIALOGUE:
-        return _dialogue_blue(profile)
-    elif screen == Screen.BATTLE:
-        return parse_battle([], profile, image)
+    return builder(image, profile, detector, verbose)
 
-    # Simple screens: INITIAL, CHARACTER_SELECT, BLESSING_SETUP, BLESSING_CHOICE,
-    # JOURNEY_START, CONFIRM_DIALOG, EVENT_FAST_FORWARD_SETTING, REGION_MOVE —
-    # policy clicks a hardcoded button; no payload needed.
+
+def _shop_blue(image, profile, detector, verbose):
+    # Shop needs item names/prices — skip without OCR.
+    if verbose:
+        print("  shop: skipping (no OCR, can't read items)")
     return None
 
 
@@ -576,6 +528,22 @@ def _dialogue_blue(profile: RegionProfile):
     if skip_rect is not None:
         return DialogueScene(skip_button=skip_rect, variant="journey_hud")
     return None
+
+
+# Blue-mode payload builders by screen. Adapter lambdas give them a uniform
+# (image, profile, detector, verbose) signature. Screens not listed need no
+# payload in blue mode (policy clicks a fixed button).
+_BLUE_PARSERS = {
+    Screen.TRAINING_HUB: lambda image, profile, detector, verbose: _training_hub_blue(image, profile),
+    Screen.TRAINING_SELECT: lambda image, profile, detector, verbose: _training_select_blue(image, profile, verbose),
+    Screen.REST_SUBMENU: lambda image, profile, detector, verbose: _rest_submenu_blue(image, profile, detector, verbose),
+    Screen.COMMISSION_SELECT: lambda image, profile, detector, verbose: _commission_select_blue(image, profile, verbose),
+    Screen.RELIC_CHOICE: lambda image, profile, detector, verbose: _relic_choice_blue(profile, detector, image),
+    Screen.SHOP: _shop_blue,
+    Screen.EVENT_CHOICE: lambda image, profile, detector, verbose: _event_choice_blue(image, profile, verbose),
+    Screen.DIALOGUE: lambda image, profile, detector, verbose: _dialogue_blue(profile),
+    Screen.BATTLE: lambda image, profile, detector, verbose: parse_battle([], profile, image),
+}
 
 
 # ---------------------------------------------------------------------------

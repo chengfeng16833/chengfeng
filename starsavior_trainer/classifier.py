@@ -356,24 +356,16 @@ def _read_anchor_regions(image: Image.Image, profile: RegionProfile, ocr: OcrEng
 
 
 def _match_screen(anchors: dict[str, str]) -> tuple[Screen, float]:
-    if _has_initial_signature(anchors):
-        return Screen.INITIAL, 1.0
-    if _has_post_training_signature(anchors):
-        return Screen.POST_TRAINING, 1.0
-    if _has_event_choice_signature(anchors):
-        return Screen.EVENT_CHOICE, 1.0
-    if _has_dialogue_signature(anchors):
-        return Screen.DIALOGUE, 1.0
-    if _has_rest_submenu_signature(anchors):
-        return Screen.REST_SUBMENU, 1.0
-    if _has_commission_select_signature(anchors):
-        return Screen.COMMISSION_SELECT, 1.0
-    if _has_shop_signature(anchors):
-        return Screen.SHOP, 1.0
-    if _has_training_hub_shop_signature(anchors):
-        return Screen.TRAINING_HUB, 1.0
-    if _has_training_select_signature(anchors):
-        return Screen.TRAINING_SELECT, 0.90
+    # Ordered signature checks now dispatch through the screen registry. The
+    # ANCHOR_HANDLERS list is sorted by priority to reproduce the exact original
+    # order (initial -> post_training -> ... -> training_select). Imported lazily
+    # to avoid an import cycle (screens/__init__ imports this module).
+    from starsavior_trainer.screens import ANCHOR_HANDLERS
+
+    for handler in ANCHOR_HANDLERS:
+        matched, confidence = handler.has_anchor(anchors)
+        if matched:
+            return handler.screen, confidence
 
     best_screen = Screen.UNKNOWN
     best_score = 0.0
