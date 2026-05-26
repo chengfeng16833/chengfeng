@@ -35,7 +35,17 @@ from starsavior_trainer.models import (
 )
 from starsavior_trainer.ocr import OcrEngine, OcrResult
 from starsavior_trainer.regions import RegionProfile
-from starsavior_trainer.vision import BlueButtonDetector, RingColorDetector
+from starsavior_trainer.vision import (
+    BlueButtonDetector,
+    RingColorDetector,
+    bright_border_ratio as _bright_border_ratio,
+    card_highlight_score as _card_highlight_score,
+    detail_sub_blessing_slot_filled as _detail_sub_blessing_slot_filled,
+    detect_red_text as _detect_red_text,
+    detect_yellow_text as _detect_yellow_text,
+    is_blessing_slot_filled as _is_blessing_slot_filled,
+    is_blue_region as _is_blue_region,
+)
 
 logger = get_logger("screen_reader")
 
@@ -1222,31 +1232,6 @@ def _is_confirm_button_active(profile: RegionProfile, image: Image.Image | None)
     return _is_blue_region(rect, image)
 
 
-def _is_blue_region(rect: Rect, image: Image.Image | None) -> bool:
-    if image is None:
-        return False
-    signal = BlueButtonDetector().detect(crop_region(image, rect))
-    return signal.name == "active_blue"
-
-
-def _is_blessing_slot_filled(rect: Rect, image: Image.Image | None) -> bool:
-    if image is None:
-        return False
-    try:
-        gray = crop_region(image, rect).convert("L")
-        pixel_data = gray.get_flattened_data() if hasattr(gray, "get_flattened_data") else gray.getdata()
-        pixels = list(pixel_data)
-        if not pixels:
-            return False
-        mean = sum(pixels) / len(pixels)
-        variance = sum((pixel - mean) ** 2 for pixel in pixels) / len(pixels)
-        stddev = variance**0.5
-        return mean >= 85 and stddev >= 45
-    except Exception as e:
-        logger.debug(f"[_is_blessing_slot_filled] pixel analysis failed: {e}")
-        return False
-
-
 def _selected_blessing_card_index(profile: RegionProfile, image: Image.Image | None) -> int | None:
     if image is None:
         return None
@@ -1265,36 +1250,6 @@ def _selected_blessing_card_index(profile: RegionProfile, image: Image.Image | N
     return None
 
 
-def _card_highlight_score(rect: Rect, image: Image.Image) -> float:
-    try:
-        rgb = image.convert("RGB")
-        iw, ih = rgb.size
-
-        def _safe_crop(left: int, upper: int, right: int, lower: int) -> Image.Image:
-            left = max(0, min(left, iw))
-            upper = max(0, min(upper, ih))
-            right = max(left + 1, min(right, iw))
-            lower = max(upper + 1, min(lower, ih))
-            return rgb.crop((left, upper, right, lower))
-
-        outside_top = _safe_crop(rect.x - 10, rect.y - 10, rect.x + rect.width + 10, rect.y + 2)
-        outside_left = _safe_crop(rect.x - 12, rect.y - 10, rect.x, rect.y + rect.height + 10)
-        inside_left = _safe_crop(rect.x, rect.y + 20, rect.x + 15, rect.y + min(180, rect.height))
-        return max(_bright_border_ratio(outside_top), _bright_border_ratio(outside_left), _bright_border_ratio(inside_left))
-    except Exception as e:
-        logger.debug(f"[_card_highlight_score] highlight analysis failed: {e}")
-        return 0.0
-
-
-def _bright_border_ratio(image: Image.Image) -> float:
-    pixel_data = image.get_flattened_data() if hasattr(image, "get_flattened_data") else image.getdata()
-    pixels = list(pixel_data)
-    if not pixels:
-        return 0.0
-    bright_border = sum(1 for r, g, b in pixels if r > 220 and g > 210 and b > 190)
-    return bright_border / len(pixels)
-
-
 def _count_detail_sub_blessings(profile: RegionProfile, image: Image.Image | None) -> int:
     if image is None:
         return 0
@@ -1304,54 +1259,6 @@ def _count_detail_sub_blessings(profile: RegionProfile, image: Image.Image | Non
         if rect is not None and _detail_sub_blessing_slot_filled(rect, image):
             count += 1
     return count
-
-
-def _detail_sub_blessing_slot_filled(rect: Rect, image: Image.Image) -> bool:
-    try:
-        rgb = crop_region(image, rect).convert("RGB")
-        pixel_data = rgb.get_flattened_data() if hasattr(rgb, "get_flattened_data") else rgb.getdata()
-        pixels = list(pixel_data)
-        if not pixels:
-            return False
-        visible_pixels = sum(1 for r, g, b in pixels if r + g + b > 220)
-        return visible_pixels / len(pixels) >= 0.20
-    except Exception as e:
-        logger.debug(f"[_detail_sub_blessing_slot_filled] pixel analysis failed: {e}")
-        return False
-
-
-def _detect_red_text(image: Image.Image) -> bool:
-    """Crude red-text detection: check if enough red-ish pixels exist."""
-    try:
-        rgb = image.convert("RGB")
-        pixel_data = rgb.get_flattened_data() if hasattr(rgb, "get_flattened_data") else rgb.getdata()
-        pixels = list(pixel_data)
-        total = max(len(pixels), 1)
-        red_count = 0
-        for r, g, b in pixels:
-            if r > 180 and g < 100 and b < 100:
-                red_count += 1
-        return red_count / total > 0.05
-    except Exception as e:
-        logger.debug(f"[_detect_red_text] red detection failed: {e}")
-        return False
-
-
-def _detect_yellow_text(image: Image.Image) -> bool:
-    """Crude yellow-text detection for training-hub shop alerts."""
-    try:
-        rgb = image.convert("RGB")
-        pixel_data = rgb.get_flattened_data() if hasattr(rgb, "get_flattened_data") else rgb.getdata()
-        pixels = list(pixel_data)
-        total = max(len(pixels), 1)
-        yellow_count = 0
-        for r, g, b in pixels:
-            if r > 180 and g > 130 and b < 100:
-                yellow_count += 1
-        return yellow_count / total > 0.03
-    except Exception as e:
-        logger.debug(f"[_detect_yellow_text] yellow detection failed: {e}")
-        return False
 
 
 def _or_none(text: str | None) -> str | None:
