@@ -345,6 +345,7 @@ def _training_select_blue(image, profile: RegionProfile, verbose: bool) -> list[
     choices: list[TrainingChoice] = []
     ring_detector = RingColorDetector()
     confirm_button = profile.regions.get("training_select_confirm_button")
+    back_button = profile.regions.get("top_back_button")
 
     for attr in TRAINING_CARD_ATTRIBUTES:
         card_rect = profile.regions.get(f"training_select_card_{attr}")
@@ -369,6 +370,7 @@ def _training_select_blue(image, profile: RegionProfile, verbose: bool) -> list[
                 fail_rate=0,
                 target=card_rect,
                 confirm_button=confirm_button,
+                back_button=back_button,
             )
         )
 

@@ -226,6 +226,65 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertEqual(action.target, guts.target)
         self.assertIn("guts", action.reason)
 
+    def test_training_returns_to_hub_when_all_fail_rates_too_high(self) -> None:
+        # Stamina exhausted: every training exceeds the fail-rate threshold. Instead
+        # of pausing (which would get stuck), click the back arrow to return to the
+        # hub, where the hub-level decision can route to rest.
+        confirm = Rect(2080, 1252, 400, 95)
+        back = Rect(90, 62, 55, 64)
+        choices = [
+            TrainingChoice(name, 0, "none", 46, Rect(1750, 338 + i * 148, 650, 112),
+                           selected=(name == "power"), confirm_button=confirm, back_button=back)
+            for i, name in enumerate(("power", "stamina", "guts", "wisdom", "speed"))
+        ]
+
+        action = TrainerPolicy().decide_training(choices, GameState(build_profile="power_focus"))
+
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, back)
+        self.assertNotEqual(action.kind, "pause")
+        self.assertIn("rest", action.reason)
+
+    def test_training_pauses_when_all_high_and_no_back_button(self) -> None:
+        # Fallback: if the back button is unavailable, still pause (don't crash).
+        choices = [
+            TrainingChoice("power", 0, "none", 46, Rect(1750, 338, 650, 112)),
+            TrainingChoice("stamina", 0, "none", 46, Rect(1750, 487, 650, 112)),
+        ]
+
+        action = TrainerPolicy().decide_training(choices, GameState(build_profile="power_focus"))
+
+        self.assertEqual(action.kind, "pause")
+
+    def test_hub_rests_after_training_bailout_then_resumes(self) -> None:
+        # Full anti-loop flow: training bail-out sets the rest flag; the next hub
+        # decision rests (not training); the following hub decision resumes training.
+        policy = TrainerPolicy()
+        state = GameState(build_profile="power_focus")
+        back = Rect(90, 62, 55, 64)
+        train_btn = Rect(1750, 450, 650, 180)
+        rest_btn = Rect(1750, 880, 650, 180)
+        hub = TrainingHubStatus(training_button=train_btn, rest_button=rest_btn)
+        high = [
+            TrainingChoice(n, 0, "none", 46, Rect(1750, 338, 650, 112), back_button=back)
+            for n in ("power", "stamina")
+        ]
+
+        # 1) all training too risky -> bail back to hub, flag set
+        bail = policy.decide_training(high, state)
+        self.assertEqual(bail.target, back)
+        self.assertTrue(policy._needs_rest)
+
+        # 2) hub consumes the flag -> rest
+        rest = policy.decide(state, Observation(Screen.TRAINING_HUB, 1.0, hub))
+        self.assertEqual(rest.target, rest_btn)
+        self.assertIn("rest", rest.reason)
+        self.assertFalse(policy._needs_rest)
+
+        # 3) flag cleared -> hub resumes normal training (no loop)
+        resume = policy.decide(state, Observation(Screen.TRAINING_HUB, 1.0, hub))
+        self.assertEqual(resume.target, train_btn)
+
     def test_event_attack_survival_branch_follows_build_profile(self) -> None:
         # 训练的方向性-style events: power builds take the attack option, stamina
         # builds take the survival option.

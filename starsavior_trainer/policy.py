@@ -214,6 +214,9 @@ class TrainerPolicy:
     def __init__(self, config: PolicyConfig | None = None):
         self.config = config or PolicyConfig()
         self._pending_commission: Rect | None = None
+        # Set when we bail out of TRAINING_SELECT because every option's fail rate
+        # is too high; the next TRAINING_HUB decision consumes it to go rest.
+        self._needs_rest: bool = False
 
     def decide(self, state: GameState, observation: Observation) -> Action:
         if observation.confidence < self.config.min_screen_confidence:
@@ -340,6 +343,14 @@ class TrainerPolicy:
 
         score, best = ranked[0]
         if score == float("-inf"):
+            # Every training's fail rate is too high (low stamina). Don't get stuck:
+            # go back to the training hub via the top-left back arrow, where the
+            # hub-level decision will route to rest (the fail-rate threshold only
+            # applies on TRAINING_SELECT, not the hub).
+            back_button = next((c.back_button for _, c in ranked if c.back_button is not None), None)
+            if back_button is not None:
+                self._needs_rest = True  # hub will consume this to choose rest
+                return Action("click", back_button, "all training fail rates too high, return to hub to rest")
             return Action("pause", None, "all training choices exceed failure threshold")
 
         # Two-step flow: first click the desired card to select it (the game then

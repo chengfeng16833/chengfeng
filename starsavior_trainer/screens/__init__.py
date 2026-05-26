@@ -128,6 +128,13 @@ def _decide_dialogue(obs, state, policy):
 
 def _decide_training_hub(obs, state, policy):
     if isinstance(obs.payload, TrainingHubStatus):
+        # If we just bailed out of TRAINING_SELECT because every option's fail rate
+        # was too high (low stamina), rest now instead of re-entering training —
+        # otherwise hub<->training_select would loop forever. One-shot flag.
+        if getattr(policy, "_needs_rest", False):
+            policy._needs_rest = False
+            if obs.payload.rest_button is not None:
+                return Action("click", obs.payload.rest_button, "low stamina (all training too risky), rest")
         if obs.payload.has_commission_alert and obs.payload.commission_button is not None:
             return Action("click", obs.payload.commission_button, "training hub, commission alert")
         if obs.payload.has_shop_alert and obs.payload.shop_button is not None:

@@ -60,6 +60,9 @@ class TrainingChoice:
     # on each choice so the policy can confirm once the desired card is selected.
     selected: bool = False
     confirm_button: Rect | None = None
+    # Top-left back arrow, used to leave TRAINING_SELECT back to the hub when every
+    # training's fail rate is too high (so the hub-level decision can choose rest).
+    back_button: Rect | None = None
 
 
 @dataclass(frozen=True)

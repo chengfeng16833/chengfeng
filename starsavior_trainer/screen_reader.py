@@ -721,6 +721,7 @@ def parse_training_select(
         return None
 
     confirm_button = profile.regions.get("training_select_confirm_button")
+    back_button = profile.regions.get("top_back_button")
 
     choices: list[TrainingChoice] = []
     for attr in TRAINING_CARD_ATTRIBUTES:
@@ -761,6 +762,7 @@ def parse_training_select(
                 target=card_rect,
                 selected=selected,
                 confirm_button=confirm_button,
+                back_button=back_button,
             )
         )
 
