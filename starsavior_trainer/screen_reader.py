@@ -8,6 +8,7 @@ from typing import Iterable
 from PIL import Image
 
 from starsavior_trainer.image_regions import crop_region
+from starsavior_trainer.logging_setup import get_logger
 from starsavior_trainer.models import (
     BattleScene,
     BlessingChoice,
@@ -35,6 +36,8 @@ from starsavior_trainer.models import (
 from starsavior_trainer.ocr import OcrEngine, OcrResult
 from starsavior_trainer.regions import RegionProfile
 from starsavior_trainer.vision import BlueButtonDetector, RingColorDetector
+
+logger = get_logger("screen_reader")
 
 ATTRIBUTE_ALIASES = {
     "power": ("\u529b\u91cf", "power"),
@@ -1239,7 +1242,8 @@ def _is_blessing_slot_filled(rect: Rect, image: Image.Image | None) -> bool:
         variance = sum((pixel - mean) ** 2 for pixel in pixels) / len(pixels)
         stddev = variance**0.5
         return mean >= 85 and stddev >= 45
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[_is_blessing_slot_filled] pixel analysis failed: {e}")
         return False
 
 
@@ -1277,7 +1281,8 @@ def _card_highlight_score(rect: Rect, image: Image.Image) -> float:
         outside_left = _safe_crop(rect.x - 12, rect.y - 10, rect.x, rect.y + rect.height + 10)
         inside_left = _safe_crop(rect.x, rect.y + 20, rect.x + 15, rect.y + min(180, rect.height))
         return max(_bright_border_ratio(outside_top), _bright_border_ratio(outside_left), _bright_border_ratio(inside_left))
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[_card_highlight_score] highlight analysis failed: {e}")
         return 0.0
 
 
@@ -1310,7 +1315,8 @@ def _detail_sub_blessing_slot_filled(rect: Rect, image: Image.Image) -> bool:
             return False
         visible_pixels = sum(1 for r, g, b in pixels if r + g + b > 220)
         return visible_pixels / len(pixels) >= 0.20
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[_detail_sub_blessing_slot_filled] pixel analysis failed: {e}")
         return False
 
 
@@ -1326,7 +1332,8 @@ def _detect_red_text(image: Image.Image) -> bool:
             if r > 180 and g < 100 and b < 100:
                 red_count += 1
         return red_count / total > 0.05
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[_detect_red_text] red detection failed: {e}")
         return False
 
 
@@ -1342,7 +1349,8 @@ def _detect_yellow_text(image: Image.Image) -> bool:
             if r > 180 and g > 130 and b < 100:
                 yellow_count += 1
         return yellow_count / total > 0.03
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[_detect_yellow_text] yellow detection failed: {e}")
         return False
 
 

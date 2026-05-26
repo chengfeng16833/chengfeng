@@ -35,7 +35,9 @@ def _configure() -> None:
     # --- Console handler: INFO and above ---
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(logging.INFO)
-    console.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    console.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s", datefmt="%H:%M:%S")
+    )
     try:  # force UTF-8 so Chinese isn't garbled on Windows consoles
         console.stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
     except Exception:

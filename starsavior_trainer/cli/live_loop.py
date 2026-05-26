@@ -16,7 +16,11 @@ import time
 from pathlib import Path
 
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
-logging.disable(logging.CRITICAL)
+# Quiet noisy third-party loggers (PaddleOCR/paddle) WITHOUT muting our own
+# starsavior.* logger. (Previously this was a blanket logging.disable(CRITICAL)
+# that also silenced the trainer's logs.)
+for _noisy in ("ppocr", "paddle", "paddlex", "PIL"):
+    logging.getLogger(_noisy).setLevel(logging.ERROR)
 
 from starsavior_trainer.capture import capture_window, list_windows, save_image, WindowInfo
 from starsavior_trainer.classifier import (
@@ -29,6 +33,7 @@ from starsavior_trainer.classifier import (
 from starsavior_trainer.blessing_inspector import BlessingChoiceInspector
 from starsavior_trainer.executor import DryRunExecutor, PyAutoGuiExecutor, map_action_to_rect
 from starsavior_trainer.image_regions import crop_region
+from starsavior_trainer.logging_setup import get_logger
 from starsavior_trainer.models import (
     Action,
     BattleScene,
@@ -72,6 +77,8 @@ from starsavior_trainer.screen_reader import (
     parse_relic_choice,
 )
 from starsavior_trainer.vision import BlueButtonDetector, RingColorDetector
+
+logger = get_logger("live_loop")
 
 
 def main() -> None:
@@ -152,7 +159,7 @@ def main() -> None:
             else:
                 observation = classify_by_ocr(screenshot, profile, ocr)
 
-            print(f"  screen={observation.screen.value} confidence={observation.confidence:.2f}")
+            logger.info(f"classified screen={observation.screen.value} confidence={observation.confidence:.2f}")
             if observation.screen in (Screen.CHARACTER_SELECT, Screen.BLESSING_SETUP):
                 character_score, blessing_score = journey_origin_visual_scores(screenshot, profile)
                 visual_screen = classify_journey_origin_by_visual(screenshot, profile)
@@ -213,14 +220,14 @@ def main() -> None:
                     action = Action("pause", None, f"repeated character confirm blocked, saved {character_path}")
             else:
                 consecutive_character_confirms = 0
-            print(f"  action={action.kind} target={action.target} reason={action.reason}")
+            logger.info(f"decision: {action.kind} target={action.target} reason={action.reason}")
             screen_action = map_action_to_rect(action, screenshot.size, client_window.rect)
             if action.target is not None:
                 print(f"  screen_target={screen_action.target}")
 
             # Execute
             result = executor.execute(screen_action)
-            print(f"  result={result.kind} point={result.point} executed={result.executed}")
+            logger.info(f"executed: {result.kind} point={result.point} executed={result.executed}")
 
             time.sleep(args.interval)
 
@@ -351,7 +358,8 @@ def _training_hub_blue(image, profile: RegionProfile) -> TrainingHubStatus:
             from starsavior_trainer.screen_reader import _detect_red_text
 
             has_commission_alert = _detect_red_text(crop_region(image, alert_rect))
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[_training_hub_blue] commission alert detect failed: {e}")
             pass
 
     shop_alert_rect = profile.regions.get("training_hub_shop_alert")
@@ -360,7 +368,8 @@ def _training_hub_blue(image, profile: RegionProfile) -> TrainingHubStatus:
             from starsavior_trainer.screen_reader import _detect_yellow_text
 
             has_shop_alert = _detect_yellow_text(crop_region(image, shop_alert_rect))
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[_training_hub_blue] shop alert detect failed: {e}")
             pass
 
     return TrainingHubStatus(
@@ -396,7 +405,8 @@ def _training_select_blue(image, profile: RegionProfile, verbose: bool) -> list[
             try:
                 ring_signal = ring_detector.detect(crop_region(image, ring_rect))
                 ring = ring_signal.name
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[_training_select_blue] ring detect failed for {attr}: {e}")
                 pass
 
         choices.append(
@@ -439,7 +449,8 @@ def _rest_submenu_blue(
         try:
             signal = detector.detect(crop_region(image, meditation_rect))
             has_meditation = signal.name == "active_blue"
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[_rest_submenu_blue] meditation detect failed: {e}")
             has_meditation = True  # Assume available if we can't detect
 
     # Without OCR, assume coins are sufficient for the best available option.
@@ -475,7 +486,8 @@ def _commission_select_blue(
         if red_rect is not None:
             try:
                 has_red = _detect_red_text(crop_region(image, red_rect))
-            except Exception:
+            except Exception as e:
+                logger.debug(f"[_commission_select_blue] red detect failed for option {idx}: {e}")
                 pass
 
         options.append(
@@ -519,7 +531,8 @@ def _relic_choice_blue(
         try:
             signal = detector.detect(crop_region(image, confirm_rect))
             confirm_active = signal.name == "active_blue"
-        except Exception:
+        except Exception as e:
+            logger.debug(f"[_relic_choice_blue] confirm detect failed: {e}")
             pass
 
     # If confirm is active, a relic was already selected.
