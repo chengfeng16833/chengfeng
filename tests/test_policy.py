@@ -180,6 +180,31 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertEqual(action.kind, "pause")
         self.assertIn("芙蕾", action.reason)
 
+    def test_character_select_two_step_confirm_when_name_unverifiable(self) -> None:
+        # bbox path: clicking her row selects her, but the left-panel name OCR
+        # often can't verify it (selected_name stays a placeholder). After clicking
+        # her row once, the next sighting must click 选择 to confirm — not re-click.
+        policy = TrainerPolicy()
+        state = GameState(desired_character="罗莎莉亚")
+        row = Rect(2120, 700, 180, 56)
+        confirm = Rect(2038, 1305, 448, 75)
+        sel = CharacterSelect(
+            options=[CharacterOption("罗莎莉亚", None, None, None, False, row)],
+            confirm_button=confirm,
+            selected_name="selected_character",  # unreadable -> never flags selected
+            can_scroll=True,
+        )
+
+        first = policy.decide_character_select(sel, state)
+        self.assertEqual(first.kind, "click")
+        self.assertEqual(first.target, row)
+        self.assertIn("select desired character", first.reason)
+
+        second = policy.decide_character_select(sel, state)
+        self.assertEqual(second.kind, "click")
+        self.assertEqual(second.target, confirm)
+        self.assertIn("confirm desired character", second.reason)
+
     def _char_sel(self, names: list[str]) -> CharacterSelect:
         opts = [
             CharacterOption(n, None, None, None, False, Rect(2030, 250 + i * 144, 458, 122))

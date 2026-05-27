@@ -230,6 +230,10 @@ class TrainerPolicy:
         self._char_scroll_down: bool = True
         self._char_reversed: bool = False
         self._char_seen_names: frozenset[str] | None = None
+        # Two-step character confirm: remembers the desired character whose row we
+        # just clicked, so the next call clicks 选择 to confirm — WITHOUT relying on
+        # the left-panel selected-name OCR (which is unreliable for some characters).
+        self._char_pending_confirm: str | None = None
 
     def decide(self, state: GameState, observation: Observation) -> Action:
         if observation.confidence < self.config.min_screen_confidence:
@@ -239,6 +243,7 @@ class TrainerPolicy:
         # a later visit (e.g. the next journey) starts a fresh bidirectional scan.
         if observation.screen != Screen.CHARACTER_SELECT:
             self._reset_character_scroll()
+            self._char_pending_confirm = None
 
         # Dispatch through the screen registry instead of a hardcoded if/elif
         # chain. Each handler.decide is a verbatim copy of the branch that used
@@ -285,13 +290,21 @@ class TrainerPolicy:
             )
             if match is not None:
                 self._reset_character_scroll()
-                if match.selected:
+                # Confirm if the game shows her selected, OR if we already clicked
+                # her row last turn — the click works even when the left-panel name
+                # OCR can't verify it, so a remembered click is enough to proceed.
+                if match.selected or self._char_pending_confirm == match.name:
+                    self._char_pending_confirm = None
                     return Action("click", selection.confirm_button, f"confirm desired character {match.name}")
+                # First sighting: click her row to select, and remember we did so.
+                self._char_pending_confirm = match.name
                 return Action("click", match.target, f"select desired character {match.name}")
 
-            # Not visible — search the list in BOTH directions (the target may be
-            # above the starting position). Scroll down first, then reverse to up
-            # when we hit the list end (view stops changing) or at the halfway cap.
+            # Not visible — clear the pending confirm (she scrolled out of view) and
+            # search the list in BOTH directions (the target may be above the start).
+            # Scroll down first, then reverse to up when we hit the list end (view
+            # stops changing) or at the halfway cap.
+            self._char_pending_confirm = None
             scroll_target = _character_list_scroll_target(selection)
             current_names = frozenset(option.name for option in selection.options)
             if scroll_target is not None and selection.can_scroll and self._char_scroll_count < _CHARACTER_SCROLL_CAP:
