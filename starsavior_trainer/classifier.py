@@ -14,6 +14,31 @@ from starsavior_trainer.vision import BlueButtonDetector
 logger = get_logger("classifier")
 
 
+# Small title/marker anchors that identify most screens on their own. OCR'ing
+# only these first (then matching) avoids reading all ~54 anchor regions every
+# frame — the dominant per-iteration cost (~5-6s). The full sweep runs only as a
+# fallback when these don't give a confident match (rare / title-less screens).
+_FAST_ANCHORS: tuple[str, ...] = (
+    "route_select_anchor_title",
+    "character_select_anchor_title",
+    "blessing_setup_anchor_title",
+    "blessing_choice_anchor_archive",
+    "journey_start_anchor_title",
+    "confirm_dialog_title",
+    "event_fast_forward_title",
+    "training_hub_anchor_title",
+    "training_select_anchor_title",
+    "training_select_card_power", "training_select_card_stamina",
+    "training_select_card_guts", "training_select_card_wisdom", "training_select_card_speed",
+    "event_choice_title",
+    "relic_choice_title",
+    "commission_select_anchor_title",
+    "skill_select_title",
+    "post_training_title",
+    "dialogue_journey_title",
+)
+
+
 def classify_by_ocr(
     image: Image.Image,
     profile: RegionProfile,
@@ -22,14 +47,21 @@ def classify_by_ocr(
 ) -> Observation:
     """Classify the current screen by reading OCR anchor regions.
 
-    Each screen has one or more anchor regions that contain reliable text.
-    The classifier reads these regions and returns the best match.
+    Two-pass for speed: first OCR only the small title/marker anchors
+    (_FAST_ANCHORS) and try to match — most screens resolve here in a fraction of
+    the OCR calls. Only if that yields no confident match do we OCR the full
+    anchor set (covers ambiguous / title-less screens). The result is identical
+    to the full sweep whenever the fast pass is confident.
     """
+
+    fast_anchors = _read_anchor_regions(image, profile, ocr, names=_FAST_ANCHORS)
+    best_screen, best_confidence = _match_screen(fast_anchors)
+    if best_confidence >= min_confidence:
+        return Observation(screen=best_screen, confidence=best_confidence)
 
     anchors = _read_anchor_regions(image, profile, ocr)
     if not anchors:
         return Observation(screen=Screen.UNKNOWN, confidence=0.0)
-
     best_screen, best_confidence = _match_screen(anchors)
     if best_confidence < min_confidence:
         return Observation(screen=Screen.UNKNOWN, confidence=best_confidence)
@@ -334,13 +366,20 @@ ANCHOR_TEXT_BY_SCREEN: dict[Screen, tuple[str, ...]] = {
 }
 
 
-def _read_anchor_regions(image: Image.Image, profile: RegionProfile, ocr: OcrEngine) -> dict[str, str]:
+def _read_anchor_regions(
+    image: Image.Image,
+    profile: RegionProfile,
+    ocr: OcrEngine,
+    names: tuple[str, ...] | None = None,
+) -> dict[str, str]:
     anchors: dict[str, str] = {}
-    all_anchor_names: set[str] = set()
-    for names in ANCHOR_REGIONS_BY_SCREEN.values():
-        all_anchor_names.update(names)
+    if names is None:
+        all_anchor_names: set[str] = set()
+        for region_names in ANCHOR_REGIONS_BY_SCREEN.values():
+            all_anchor_names.update(region_names)
+        names = tuple(all_anchor_names)
 
-    for name in all_anchor_names:
+    for name in names:
         rect = profile.regions.get(name)
         if rect is None:
             continue
