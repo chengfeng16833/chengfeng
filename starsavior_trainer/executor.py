@@ -47,14 +47,37 @@ class PyAutoGuiExecutor:
         if point is None:
             return ExecutionResult(False, action.kind, None, f"{action.kind} action missing target: {action.reason}")
 
-        self._pyautogui.moveTo(point[0], point[1], duration=self._move_duration)
         if action.kind == "move":
+            self._hover_move(point)
             return ExecutionResult(True, action.kind, point, action.reason)
+        self._pyautogui.moveTo(point[0], point[1], duration=self._move_duration)
         if action.kind == "scroll":
             self._drag_scroll(point, action.scroll_clicks)
             return ExecutionResult(True, action.kind, point, action.reason)
         self._pyautogui.click()
         return ExecutionResult(True, action.kind, point, action.reason)
+
+    def _hover_move(self, point: tuple[int, int]) -> None:
+        """Move so the game registers a HOVER (refreshes the right detail panel).
+
+        pyautogui's moveTo uses SetCursorPos (a teleport) which this game doesn't
+        treat as motion — so the hovered card's sub-blessings never show. We slide
+        in with relative mouse_event moves (real motion), then dwell so the detail
+        panel updates before the next capture reads it.
+        """
+        import ctypes
+        import time
+
+        MOUSEEVENTF_MOVE = 0x0001
+        user32 = ctypes.windll.user32
+        tx, ty = int(point[0]), int(point[1])
+        user32.SetCursorPos(tx - 60, ty)  # start left of the target
+        time.sleep(0.05)
+        for _ in range(12):  # slide right into the target -> real motion events
+            user32.mouse_event(MOUSEEVENTF_MOVE, 5, 0, 0, 0)
+            time.sleep(0.015)
+        user32.SetCursorPos(tx, ty)  # land exactly on the target
+        time.sleep(0.4)  # dwell so the hovered card's detail panel refreshes
 
     def _drag_scroll(self, anchor: tuple[int, int], clicks: int, pixels: int = 380, steps: int = 25) -> None:
         """Scroll a list with a real press-hold-drag.

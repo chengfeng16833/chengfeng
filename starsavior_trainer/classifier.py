@@ -220,8 +220,14 @@ def classify_hybrid(
     if ocr_result.screen != Screen.UNKNOWN:
         if ocr_result.screen in (Screen.CHARACTER_SELECT, Screen.BLESSING_SETUP):
             visual_screen = classify_journey_origin_by_visual(image, profile)
-            if visual_screen is not None:
-                return Observation(screen=visual_screen, confidence=max(ocr_result.confidence, 0.90))
+            resolved = visual_screen if visual_screen is not None else ocr_result.screen
+            # character_select & journey_start share the "旅程起点" title; tell them
+            # apart by the bottom button ("选择" vs "旅程起点"). journey_start has no
+            # character list, so misreading it as character_select stalls the
+            # character-scroll loop forever. (blessing_setup is split off by visual.)
+            if resolved == Screen.CHARACTER_SELECT and _looks_like_journey_start(image, profile, ocr):
+                return Observation(screen=Screen.JOURNEY_START, confidence=max(ocr_result.confidence, 0.90))
+            return Observation(screen=resolved, confidence=max(ocr_result.confidence, 0.90))
         return ocr_result
 
     blue_result = classify_by_blue_button(image, profile, blue_min_confidence)
@@ -230,6 +236,19 @@ def classify_hybrid(
 
     # Fallback — OCR-based anchor text matching.
     return ocr_result
+
+
+def _looks_like_journey_start(image: Image.Image, profile: RegionProfile, ocr: OcrEngine) -> bool:
+    """Distinguish journey_start from character_select (they share the 旅程起点
+    title + a bottom-right blue button). character_select's button reads 选择;
+    journey_start's reads 旅程起点 (with 自动旅程 beside it). OCR that button."""
+    rect = profile.regions.get("journey_start_button")
+    if rect is None:
+        return False
+    text = ocr.read_text(crop_region(image, rect)).text
+    if "选择" in text:
+        return False
+    return ("旅程" in text) or ("起点" in text) or ("自动" in text)
 
 
 def classify_by_filename(path: str | Path) -> Observation:
