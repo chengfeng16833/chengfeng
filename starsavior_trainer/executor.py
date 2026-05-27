@@ -79,16 +79,16 @@ class PyAutoGuiExecutor:
 
         dy_total = -pixels if clicks < 0 else pixels
         user32.SetCursorPos(int(anchor[0]), int(anchor[1]))
-        time.sleep(0.2)
+        time.sleep(0.1)
         user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-        time.sleep(0.3)  # hold before moving so the game registers a press, not a tap
+        time.sleep(0.18)  # hold before moving so the game registers a press, not a tap
         step_dy = int(dy_total / steps) or (-1 if dy_total < 0 else 1)
         for _ in range(steps):
             user32.mouse_event(MOUSEEVENTF_MOVE, 0, step_dy, 0, 0)
-            time.sleep(0.015)
-        time.sleep(0.2)
+            time.sleep(0.008)
+        time.sleep(0.12)
         user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-        time.sleep(0.1)
+        time.sleep(0.05)
         # Snap the cursor back to the anchor so repeated drags don't walk it out
         # of the game window (each drag moves relatively from the current point).
         user32.SetCursorPos(int(anchor[0]), int(anchor[1]))
