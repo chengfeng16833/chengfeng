@@ -210,6 +210,7 @@ def main() -> None:
     iteration = 0
     consecutive_character_confirms = 0
     last_character_click_target = None
+    consecutive_unknown = 0
     was_paused = False
     try:
         while args.max_iterations == 0 or iteration < args.max_iterations:
@@ -256,10 +257,22 @@ def main() -> None:
             if observation.screen == Screen.UNKNOWN:
                 unknown_path = Path("screenshots/live_unknown_latest.png")
                 save_image(screenshot, unknown_path)
-                print(f"  saved unknown screenshot: {unknown_path}")
-                print("  unknown screen, pausing...")
+                consecutive_unknown += 1
+                # Most unknown frames are transition/display screens (loading splash,
+                # reward display, dialogue) that either auto-advance or just need a
+                # click to continue. Click the screen centre to push through; only
+                # pause once it persists, so we never click blindly forever.
+                if args.execute and consecutive_unknown <= 4:
+                    activate_window(client_window.hwnd)
+                    cx = client_window.rect.x + client_window.rect.width // 2
+                    cy = client_window.rect.y + client_window.rect.height // 2
+                    executor.execute(Action("click", Rect(cx, cy, 1, 1), "unknown: click centre to advance"))
+                    print(f"  unknown screen, click centre to advance ({consecutive_unknown})")
+                else:
+                    print(f"  unknown screen, pausing (consecutive={consecutive_unknown})")
                 time.sleep(args.interval)
                 continue
+            consecutive_unknown = 0
 
             # Parse payload
             if args.blue_mode:
