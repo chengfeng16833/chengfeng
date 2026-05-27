@@ -188,6 +188,13 @@ class PolicyConfig:
             "protection_focus": {"guts": 16, "stamina": 10},
         }
     )
+    # Early-game (前12回合) bias: inside this round window, 力量(power)/生命(stamina)
+    # get an extra score weight so the bot front-loads them. Added on top of the
+    # profile bias (加权打分) — not a hard override, still compared against the rest.
+    early_game_rounds: int = 12
+    early_game_stat_weight: dict[str, int] = field(
+        default_factory=lambda: {"power": 15, "stamina": 15}
+    )
     skill_keywords_by_profile: dict[str, tuple[str, ...]] = field(
         default_factory=lambda: {
             "balanced": ("\u653b\u51fb", "\u96c6\u4e2d", "\u751f\u547d", "\u4fdd\u62a4", "\u6d1e\u5bdf"),
@@ -268,7 +275,22 @@ class TrainerPolicy:
 
         profile = state.build_profile if state else "balanced"
         strategic_bias = self.config.training_bias_by_profile.get(profile, {}).get(choice.name, 0)
-        return choice.stat_gain + self.config.ring_bonus.get(choice.ring, 0) - fail_penalty + strategic_bias
+
+        early_bonus = 0
+        if (
+            state is not None
+            and state.current_round is not None
+            and state.current_round <= self.config.early_game_rounds
+        ):
+            early_bonus = self.config.early_game_stat_weight.get(choice.name, 0)
+
+        return (
+            choice.stat_gain
+            + self.config.ring_bonus.get(choice.ring, 0)
+            - fail_penalty
+            + strategic_bias
+            + early_bonus
+        )
 
     def _reset_character_scroll(self) -> None:
         self._char_scroll_count = 0

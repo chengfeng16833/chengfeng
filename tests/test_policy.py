@@ -904,5 +904,62 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertEqual(action.target, options[1].target)
 
 
+class RoundStrategyTrainingTests(unittest.TestCase):
+    """前12回合 力量/体力 加权打分 — round-aware early-game training weighting.
+
+    Early rounds favour 力量(power)/生命(stamina): inside the early window each
+    gets a score weight added (still compared against the others, not forced).
+    """
+
+    def test_early_round_adds_weight_to_power_and_stamina(self) -> None:
+        policy = TrainerPolicy()
+        power = TrainingChoice("power", 10, "none", 0, Rect(0, 0, 10, 10))
+        stamina = TrainingChoice("stamina", 10, "none", 0, Rect(0, 0, 10, 10))
+        for choice in (power, stamina):
+            base = policy.training_score(choice, GameState(current_round=None))
+            early = policy.training_score(choice, GameState(current_round=3))
+            self.assertEqual(early - base, 15, choice.name)
+
+    def test_round_12_boundary_is_inclusive(self) -> None:
+        policy = TrainerPolicy()
+        power = TrainingChoice("power", 10, "none", 0, Rect(0, 0, 10, 10))
+        base = policy.training_score(power, GameState(current_round=None))
+        self.assertEqual(policy.training_score(power, GameState(current_round=12)) - base, 15)
+
+    def test_no_weight_after_early_window(self) -> None:
+        policy = TrainerPolicy()
+        power = TrainingChoice("power", 10, "none", 0, Rect(0, 0, 10, 10))
+        base = policy.training_score(power, GameState(current_round=None))
+        self.assertEqual(policy.training_score(power, GameState(current_round=13)), base)
+
+    def test_non_target_stat_gets_no_early_weight(self) -> None:
+        policy = TrainerPolicy()
+        guts = TrainingChoice("guts", 10, "none", 0, Rect(0, 0, 10, 10))
+        base = policy.training_score(guts, GameState(current_round=None))
+        self.assertEqual(policy.training_score(guts, GameState(current_round=3)), base)
+
+    def test_early_weight_does_not_override_fail_veto(self) -> None:
+        # A too-risky card stays vetoed (-inf) even inside the early window — the
+        # weight is added after the fail-rate guard, never rescues an over-failed card.
+        policy = TrainerPolicy()
+        risky = TrainingChoice("power", 10, "none", 99, Rect(0, 0, 10, 10))
+        self.assertEqual(policy.training_score(risky, GameState(current_round=1)), float("-inf"))
+
+    def test_early_weight_can_flip_the_training_choice(self) -> None:
+        # balanced build: wisdom's higher base (30) beats power (20) normally, but in
+        # the early window power's +15 weight (35) overtakes it.
+        confirm = Rect(2080, 1252, 400, 95)
+        power = TrainingChoice("power", 20, "none", 0, Rect(1750, 338, 650, 112), confirm_button=confirm)
+        wisdom = TrainingChoice("wisdom", 30, "none", 0, Rect(1750, 487, 650, 112), confirm_button=confirm)
+        policy = TrainerPolicy()
+
+        late = policy.decide_training([power, wisdom], GameState(current_round=None))
+        early = policy.decide_training([power, wisdom], GameState(current_round=3))
+
+        self.assertEqual(late.target, wisdom.target)
+        self.assertEqual(early.target, power.target)
+        self.assertIn("power", early.reason)
+
+
 if __name__ == "__main__":
     unittest.main()

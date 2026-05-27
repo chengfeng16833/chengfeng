@@ -246,6 +246,9 @@ class GameState:
     desired_character: str | None = None
     build_profile: str = "balanced"
     desired_blessing_attribute: str | None = None
+    # Current journey round/turn (1-based). None when unknown/not yet read from the
+    # hub. Drives the early-game training bias (see PolicyConfig.early_game_rounds).
+    current_round: int | None = None
 
 
 @dataclass(frozen=True)
