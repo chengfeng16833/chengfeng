@@ -1177,6 +1177,11 @@
           "profile": "no_lottery_ticket",
           "choose_option": 3,
           "reason": "cannot gamble without the required lottery ticket"
+        },
+        {
+          "profile": "default",
+          "choose_option": 3,
+          "reason": "user 2026-05-28: no lottery ticket -> skip (option 3); with a ticket it is a random 1/2 but bot cannot detect the ticket"
         }
       ],
       "notes": [
@@ -1296,6 +1301,11 @@
           "profile": "has_power_training_certificate",
           "choose_option": 1,
           "reason": "convert the certificate when the follow-up event appears"
+        },
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "user 2026-05-28: default convert the certificate (option 1)"
         }
       ],
       "notes": [
@@ -1335,6 +1345,11 @@
           "profile": "has_life_training_certificate",
           "choose_option": 1,
           "reason": "convert the certificate when the follow-up event appears"
+        },
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "user 2026-05-28: default convert the certificate (option 1)"
         }
       ],
       "notes": [
@@ -1542,6 +1557,11 @@
           "profile": "cannot_meet_option_1_condition",
           "choose_option": 3,
           "reason": "user note says skip with option 3 when option 1 is unavailable; option 2 is poor value"
+        },
+        {
+          "profile": "default",
+          "choose_option": 1,
+          "reason": "user 2026-05-28: default option 1 (take the big package); only falls to option 3 when the condition is unmet, which bot cannot detect"
         }
       ],
       "notes": [
