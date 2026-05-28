@@ -23,6 +23,7 @@ from starsavior_trainer.models import (
     RelicOption,
     RestSubmenu,
     Screen,
+    ShopItem,
     SkillOption,
     TrainingChoice,
     TrainingHubStatus,
@@ -52,6 +53,21 @@ class TrainerPolicyTest(unittest.TestCase):
 
         self.assertEqual(action.kind, "click")
         self.assertEqual(action.target, Rect(2040, 1318, 470, 75))
+
+    def test_reward_screen_clicks_continue_prompt_not_dead_centre(self) -> None:
+        policy = TrainerPolicy()
+
+        action = policy.decide(GameState(), Observation(Screen.REWARD, 1.0))
+
+        self.assertEqual(action.kind, "click")
+        # The 点击以继续 prompt (bottom-centre), NOT the dead centre relic card.
+        self.assertEqual(action.target, policy.config.reward_continue_button)
+
+    def test_dialogue_skip_is_a_burst_to_advance_fast(self) -> None:
+        action = TrainerPolicy().decide_dialogue(DialogueScene(skip_button=Rect(1855, 54, 78, 65)))
+
+        self.assertEqual(action.kind, "click")
+        self.assertGreater(action.repeat, 1)
 
     def test_character_select_confirms_selected_character(self) -> None:
         selection = CharacterSelect(
@@ -458,7 +474,8 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertEqual(action.target, hub.commission_button)
         self.assertIn("commission alert", action.reason)
 
-    def test_training_hub_opens_skill_learning_when_available(self) -> None:
+    def test_training_hub_skips_skill_learning_midrun(self) -> None:
+        # 技能留到跑马完成后再学(前期学技能不影响跑马);大厅即使可学技能也直接训练。
         hub = TrainingHubStatus(
             training_button=Rect(10, 10, 20, 20),
             commission_button=Rect(40, 40, 20, 20),
@@ -470,10 +487,11 @@ class TrainerPolicyTest(unittest.TestCase):
         action = TrainerPolicy().decide(GameState(), Observation(Screen.TRAINING_HUB, 0.95, hub))
 
         self.assertEqual(action.kind, "click")
-        self.assertEqual(action.target, hub.skill_button)
-        self.assertIn("skill learning", action.reason)
+        self.assertEqual(action.target, hub.training_button)
+        self.assertNotIn("skill", action.reason)
 
-    def test_training_hub_opens_skill_learning_at_point_threshold(self) -> None:
+    def test_training_hub_ignores_potential_points_midrun(self) -> None:
+        # 潜质点够也不中途学技能,直接训练。
         hub = TrainingHubStatus(
             training_button=Rect(10, 10, 20, 20),
             skill_button=Rect(100, 100, 20, 20),
@@ -482,7 +500,7 @@ class TrainerPolicyTest(unittest.TestCase):
 
         action = TrainerPolicy().decide(GameState(), Observation(Screen.TRAINING_HUB, 0.95, hub))
 
-        self.assertEqual(action.target, hub.skill_button)
+        self.assertEqual(action.target, hub.training_button)
 
     def test_training_hub_commission_alert_preempts_skill_learning(self) -> None:
         hub = TrainingHubStatus(
@@ -523,16 +541,62 @@ class TrainerPolicyTest(unittest.TestCase):
 
         self.assertEqual(action.target, hub.shop_button)
 
+    def test_shop_buys_stamina_recovery_by_effect(self) -> None:
+        # 按效果买(名字与效果无关): 含"回复体力"→买。
+        items = [ShopItem("炸蔬菜", 24, Rect(10, 10, 20, 20), effect="首次战斗开始时回复体力10")]
+        action = TrainerPolicy().decide_shop(items)
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, items[0].target)
+
+    def test_shop_buys_potential_refund_by_effect(self) -> None:
+        # 手持风扇效果是"伤害+1%"但"潜质点数8退还"→买(白嫖潜质点)。
+        items = [ShopItem("手持随身风扇", 40, Rect(10, 10, 20, 20), effect="每回合伤害增加1%。潜质点数 8 退还")]
+        action = TrainerPolicy().decide_shop(items)
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, items[0].target)
+
+    def test_shop_skips_items_without_wanted_effect(self) -> None:
+        # 效果不含想要关键词(纯攻击护符,非潜质退还/回体力)→ 不买(退出)。
+        items = [ShopItem("某护符", 30, Rect(10, 10, 20, 20), effect="攻击力增加5%")]
+        action = TrainerPolicy().decide_shop(items)
+        self.assertEqual(action.kind, "skip")
+
+    def test_dday_hub_visits_trading_before_battle(self) -> None:
+        # D-DAY 评鉴战大厅(有评鉴战+交易按钮): 先去交易(打过评鉴战交易就消失)。
+        hub = TrainingHubStatus(rating_battle_button=Rect(10, 10, 20, 20), trading_button=Rect(40, 40, 20, 20))
+        action = TrainerPolicy().decide(GameState(), Observation(Screen.TRAINING_HUB, 0.95, hub))
+        self.assertEqual(action.target, hub.trading_button)
+
+    def test_dday_hub_goes_battle_after_trading(self) -> None:
+        hub = TrainingHubStatus(rating_battle_button=Rect(10, 10, 20, 20), trading_button=Rect(40, 40, 20, 20))
+        policy = TrainerPolicy()
+        policy._dday_trading_done = True  # 已逛过交易
+        action = policy.decide(GameState(), Observation(Screen.TRAINING_HUB, 0.95, hub))
+        self.assertEqual(action.target, hub.rating_battle_button)
+
+    def test_shop_exit_marks_dday_trading_done(self) -> None:
+        # 交易逛完(没想买的→退出)后标记已逛, 这样回 D-DAY 大厅就去评鉴战。
+        policy = TrainerPolicy()
+        policy.decide_shop([ShopItem("x", 30, Rect(10, 10, 20, 20), effect="攻击力+5")])
+        self.assertTrue(policy._dday_trading_done)
+
+    def test_normal_hub_resets_dday_trading_done(self) -> None:
+        # 评鉴战日逛完交易后(_dday_trading_done=True), 回到普通大厅(无评鉴战按钮)应清掉
+        # 该一次性标记, 这样下一个评鉴战日还会先去交易。
+        policy = TrainerPolicy()
+        policy._dday_trading_done = True
+        hub = TrainingHubStatus(training_button=Rect(10, 10, 20, 20))  # 普通大厅, 无 rating_battle_button
+        policy.decide(GameState(), Observation(Screen.TRAINING_HUB, 0.9, hub))
+        self.assertFalse(policy._dday_trading_done)
+
     def test_skill_select_uses_build_profile_keywords(self) -> None:
         options = [
             SkillOption("生命感知", cost=100, target=Rect(10, 10, 20, 20)),
             SkillOption("攻击感知", cost=90, target=Rect(40, 40, 20, 20)),
         ]
 
-        action = TrainerPolicy().decide(
-            GameState(build_profile="power_focus"),
-            Observation(Screen.SKILL_SELECT, 0.95, options),
-        )
+        # decide_skill 终局仍按 build 关键词选(直接测它);大厅/界面前期不再进技能学习。
+        action = TrainerPolicy().decide_skill(options, GameState(build_profile="power_focus"))
 
         self.assertEqual(action.kind, "click")
         self.assertEqual(action.target, options[1].target)
@@ -544,13 +608,21 @@ class TrainerPolicyTest(unittest.TestCase):
             SkillOption("未习得 生命感知", cost=100, target=Rect(40, 40, 20, 20)),
         ]
 
-        action = TrainerPolicy().decide(
-            GameState(build_profile="power_focus"),
-            Observation(Screen.SKILL_SELECT, 0.95, options),
-        )
+        action = TrainerPolicy().decide_skill(options, GameState(build_profile="power_focus"))
 
         self.assertEqual(action.kind, "click")
         self.assertEqual(action.target, options[1].target)
+
+    def test_skill_select_exits_midrun_via_close_button(self) -> None:
+        # 前期进了技能界面 → 点右上角 ✕ 退出(技能留到跑马完成后),不在前期学技能。
+        options = [SkillOption("攻击感知", cost=90, target=Rect(40, 40, 20, 20))]
+        policy = TrainerPolicy()
+        action = policy.decide(
+            GameState(build_profile="power_focus"),
+            Observation(Screen.SKILL_SELECT, 0.95, options),
+        )
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, policy.config.skill_select_close_button)
 
     def test_blessing_setup_opens_first_empty_slot(self) -> None:
         setup = BlessingSetup(
@@ -791,6 +863,36 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertEqual(action.target, choice.confirm_button)
         self.assertIn("confirm selected relic", action.reason)
 
+    def test_relic_choice_two_step_confirms_instead_of_oscillating(self) -> None:
+        # Regression: a normal relic choice never sets selected_name, so the old
+        # code re-ran decide_relic every frame and the pick flipped between
+        # near-scored cards (OCR noise) — endless back-and-forth, never confirming.
+        # Now it locks the first pick and confirms next frame.
+        policy = TrainerPolicy()
+        confirm = Rect(100, 100, 20, 20)
+        low, high = Rect(10, 10, 20, 20), Rect(40, 40, 20, 20)
+
+        first = policy.decide(
+            GameState(),
+            Observation(
+                Screen.RELIC_CHOICE, 0.95,
+                RelicChoice([RelicOption("low", 20, low), RelicOption("high", 80, high)], confirm_button=confirm),
+            ),
+        )
+        self.assertEqual(first.target, high)  # picks the highest score first
+
+        # Next frame the scores flip (simulating OCR noise on the highlighted card):
+        # it must CONFIRM the earlier pick, not re-pick the now-"better" card.
+        second = policy.decide(
+            GameState(),
+            Observation(
+                Screen.RELIC_CHOICE, 0.95,
+                RelicChoice([RelicOption("low", 80, low), RelicOption("high", 20, high)], confirm_button=confirm),
+            ),
+        )
+        self.assertEqual(second.target, confirm)
+        self.assertIn("confirm", second.reason)
+
     def test_event_choice_prefers_coin_cost_over_fatigue_cost(self) -> None:
         options = [
             EventOption("\u4ed8\u94b1\u8d2d\u4e70 50", Rect(10, 10, 20, 20)),
@@ -987,6 +1089,52 @@ class RoundStrategyTrainingTests(unittest.TestCase):
         policy = TrainerPolicy()
         power_rainbow = TrainingChoice("power", 0, "rainbow", 0, Rect(0, 0, 10, 10))
         self.assertEqual(policy.training_score(power_rainbow, GameState(current_round=3)), 115)
+
+
+class RelicComboTests(unittest.TestCase):
+    """组合圣遗物(队员全体)按部位属性 + build 优先级选; 普通(伙伴专用)按徽章分."""
+
+    _CONFIRM = Rect(1080, 1158, 400, 82)
+
+    def _combo(self, *attr_x):
+        opts = [
+            RelicOption(f"relic_{a}", 4, Rect(x, 330, 480, 750), attribute=a, is_team=True)
+            for a, x in attr_x
+        ]
+        return RelicChoice(options=opts, confirm_button=self._CONFIRM)
+
+    def test_power_picks_attack_glove(self) -> None:
+        ch = self._combo(("attack", 485), ("hp", 1040), ("crit_dmg", 1593))
+        action = TrainerPolicy().decide_relic_choice(ch, GameState(build_profile="power_focus"))
+        self.assertEqual(action.target, ch.options[0].target)  # 手套(攻击力)最优
+
+    def test_power_falls_to_crit_dmg_when_no_attack_or_critrate(self) -> None:
+        # 铠甲hp/眼镜hit/项链crit_dmg → 攻击/暴击率都没 → 取暴伤(项链)= 实机那一屏的正确解
+        ch = self._combo(("hp", 485), ("hit", 1040), ("crit_dmg", 1593))
+        action = TrainerPolicy().decide_relic_choice(ch, GameState(build_profile="power_focus"))
+        self.assertEqual(action.target, ch.options[2].target)
+
+    def test_power_random_first_when_none_in_priority(self) -> None:
+        # 优先级里3个属性都没出现 → 随便选(取第一张)
+        ch = self._combo(("hp", 485), ("defense", 1040), ("resist", 1593))
+        action = TrainerPolicy().decide_relic_choice(ch, GameState(build_profile="power_focus"))
+        self.assertEqual(action.target, ch.options[0].target)
+
+    def test_stamina_picks_hp_armor(self) -> None:
+        ch = self._combo(("hp", 485), ("hit", 1040), ("crit_dmg", 1593))
+        action = TrainerPolicy().decide_relic_choice(ch, GameState(build_profile="stamina_tank"))
+        self.assertEqual(action.target, ch.options[0].target)  # 铠甲(生命)最优
+
+    def test_normal_relic_picks_highest_score(self) -> None:
+        ch = RelicChoice(
+            options=[
+                RelicOption("a", 8, Rect(485, 330, 480, 750), is_team=False),
+                RelicOption("b", 12, Rect(1040, 330, 480, 750), is_team=False),
+            ],
+            confirm_button=self._CONFIRM,
+        )
+        action = TrainerPolicy().decide_relic_choice(ch, GameState(build_profile="power_focus"))
+        self.assertEqual(action.target, ch.options[1].target)  # 徽章分12 最高
 
 
 if __name__ == "__main__":

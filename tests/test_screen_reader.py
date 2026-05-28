@@ -410,6 +410,31 @@ class ScreenReaderParserTest(unittest.TestCase):
         profile = RegionProfile("test", (2560, 1440), {"training_hub_action_training": Rect(1750, 450, 650, 180)})
         self.assertIsNone(parse_training_hub([RegionText("other", "nothing", 0.9)], profile))
 
+    def test_parse_training_hub_detects_dday_battle_and_trading_buttons(self) -> None:
+        # On 评鉴战日 the hub swaps 训练/委托/休息 for 评鉴战(top)+交易(bottom). parse must
+        # surface BOTH buttons so the policy goes 交易 first, then 评鉴战.
+        profile, texts = _training_hub_fixture()
+        rb = Rect(2160, 650, 260, 75)
+        tr = Rect(2180, 778, 240, 60)
+        profile.regions["training_hub_rating_battle"] = rb
+        profile.regions["training_hub_trading"] = tr
+        texts.append(RegionText("training_hub_rating_battle", "评鉴战", 0.8))
+        texts.append(RegionText("training_hub_trading", "交易", 0.99))
+        status = parse_training_hub(texts, profile)
+        self.assertEqual(status.rating_battle_button, rb)
+        self.assertEqual(status.trading_button, tr)
+
+    def test_parse_training_hub_normal_has_no_dday_buttons(self) -> None:
+        # Normal hub (button area reads 训练/委托/休息, not 评鉴战/交易) -> no D-DAY buttons.
+        profile, texts = _training_hub_fixture()
+        profile.regions["training_hub_rating_battle"] = Rect(2160, 650, 260, 75)
+        profile.regions["training_hub_trading"] = Rect(2180, 778, 240, 60)
+        texts.append(RegionText("training_hub_rating_battle", "训练", 0.9))
+        texts.append(RegionText("training_hub_trading", "休息", 0.9))
+        status = parse_training_hub(texts, profile)
+        self.assertIsNone(status.rating_battle_button)
+        self.assertIsNone(status.trading_button)
+
     # ---- training select ----
     def test_parse_training_select_reads_five_choices(self) -> None:
         profile, texts = _training_select_fixture()
@@ -539,15 +564,34 @@ class ScreenReaderParserTest(unittest.TestCase):
     # ---- shop ----
     def test_parse_shop_reads_items(self) -> None:
         profile, texts = _shop_fixture()
-        items = parse_shop(texts, profile)
-        self.assertIsNotNone(items)
-        self.assertEqual(len(items), 2)
-        self.assertEqual(items[1].name, "\u9ad8\u7ea7\u8bad\u7ec3\u4e66")
-        self.assertEqual(items[1].price, 110)
+        scene = parse_shop(texts, profile)
+        self.assertIsNotNone(scene)
+        self.assertEqual(len(scene.items), 2)
+        self.assertEqual(scene.items[1].name, "\u9ad8\u7ea7\u8bad\u7ec3\u4e66")
+        self.assertEqual(scene.items[1].price, 110)
 
     def test_parse_shop_returns_none_without_anchor(self) -> None:
         profile = RegionProfile("test", (2560, 1440), {})
         self.assertIsNone(parse_shop([RegionText("x", "y", 0.5)], profile))
+
+    def test_parse_shop_returns_item_per_row_even_without_name_price(self) -> None:
+        # Journey Trading's right-side list OCRs unreliably, but the buy decision
+        # keys off each item's effect (read by clicking the row), so parse must
+        # still return one clickable item per defined row when name/price are blank.
+        profile = RegionProfile(
+            "test",
+            (2560, 1440),
+            {
+                "shop_item_1": Rect(2240, 552, 260, 62),
+                "shop_item_2": Rect(2240, 707, 260, 62),
+                "shop_item_3": Rect(2240, 862, 260, 62),
+            },
+        )
+        scene = parse_shop([], profile)
+        self.assertIsNotNone(scene)
+        self.assertEqual(len(scene.items), 3)
+        self.assertEqual(scene.items[0].target, Rect(2240, 552, 260, 62))
+        self.assertEqual(scene.items[2].target, Rect(2240, 862, 260, 62))
 
     # ---- region move ----
     def test_parse_region_move_detects_button(self) -> None:
@@ -656,6 +700,45 @@ class ScreenReaderParserTest(unittest.TestCase):
     def test_parse_battle_returns_none_without_anchor(self) -> None:
         profile = RegionProfile("test", (2560, 1440), {})
         self.assertIsNone(parse_battle([RegionText("x", "y", 0.5)], profile))
+
+    def test_parse_battle_rating_confirm_picks_skip_battle_button(self) -> None:
+        # 基础评鉴战 entry confirm: pick 跳过战斗 (skip → instant result), never
+        # 开始委托 (which actually fights). confirm_active must stay False so
+        # decide_battle clicks the skip button, not a confirm.
+        skip = Rect(1010, 1010, 180, 70)
+        profile = RegionProfile("test", (2560, 1440), {"battle_skip_battle_button": skip})
+        texts = [
+            RegionText("battle_skip_battle_button", "跳过战斗", 1.0),
+            RegionText("battle_confirm_title", "基础评鉴战", 0.99),
+        ]
+        scene = parse_battle(texts, profile)
+        self.assertIsNotNone(scene)
+        self.assertEqual(scene.skip_button, skip)
+        self.assertFalse(scene.confirm_active)
+
+    def test_parse_battle_skip_confirm_dialog_clicks_blue_confirm(self) -> None:
+        # 点底层「跳过战斗」后弹二次确认框(标题跳过战斗 / "确定要跳过评鉴战斗吗?" /
+        # 取消 + 蓝色「跳过战斗」)。必须点框内蓝色「跳过战斗」确认, 而不是又点被遮住的
+        # 底层按钮(否则死循环)。底层「跳过战斗」此时仍透出可被 OCR 读到。
+        confirm = Rect(1385, 912, 170, 58)
+        profile = RegionProfile(
+            "test",
+            (2560, 1440),
+            {
+                "battle_skip_confirm_button": confirm,
+                "battle_skip_confirm_cancel": Rect(1010, 912, 160, 58),
+                "battle_skip_battle_button": Rect(1010, 1010, 180, 70),
+            },
+        )
+        texts = [
+            RegionText("battle_skip_confirm_cancel", "取消", 0.98),
+            RegionText("battle_skip_confirm_button", "跳过战斗", 0.9),
+            RegionText("battle_skip_battle_button", "跳过战斗", 0.99),  # 底层透出
+        ]
+        scene = parse_battle(texts, profile)
+        self.assertIsNotNone(scene)
+        self.assertEqual(scene.skip_button, confirm)
+        self.assertFalse(scene.confirm_active)
 
     # ---- skill select ----
     def test_parse_skill_select_reads_options(self) -> None:

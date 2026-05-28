@@ -178,10 +178,21 @@ class PolicyConfig:
             "\u5fc3\u60c5\u7cd6": "mood_candy",
         }
     )
+    # \u4ea4\u6613\u6309"\u6548\u679c\u8bf4\u660e"\u4e70(\u5546\u54c1\u540d\u4e0e\u6548\u679c\u65e0\u5173): \u6548\u679c\u6587\u672c\u542b\u8fd9\u4e9b\u5173\u952e\u8bcd\u5c31\u4e70 \u2014\u2014 \u56de\u590d\u4f53\u529b
+    # \u7c7b + "\u6f5c\u8d28\u70b9\u6570N\u9000\u8fd8"(\u767d\u5ad6\u6f5c\u8d28\u70b9,\u542b\u56fa\u5b9a\u4e70\u7684\u624b\u6301\u98ce\u6247). \u4e0d\u5237\u65b0\u3001\u4e0d\u9650\u4ef7\u3002
+    shop_buy_effect_keywords: tuple[str, ...] = (
+        "\u56de\u590d\u4f53\u529b", "\u4f53\u529b", "\u8010\u529b", "\u6f5c\u8d28\u70b9", "\u9000\u8fd8",
+    )
+    # Internal stat keys map to the game's training types as:
+    #   power=力量  stamina=体力(生命)  guts=韧性(防御)  wisdom=专注(命中)  speed=保护(命抗)
+    # Power runs follow "力量/生命为主, 防御为辅": 力量 main, 体力 co-primary, 韧性
+    # secondary; 专注/保护 stay at 0 (only worth it via support-card heads, which the
+    # ring_bonus already rewards). Over-biasing 韧性/防御 would starve the main stat's
+    # proficiency and miss the 1250 cap, so keep it modest.
     training_bias_by_profile: dict[str, dict[str, int]] = field(
         default_factory=lambda: {
             "balanced": {},
-            "power_focus": {"power": 18, "speed": 8},
+            "power_focus": {"power": 18, "stamina": 12, "guts": 8},
             "focus_focus": {"wisdom": 18, "speed": 8},
             "durability_focus": {"stamina": 16, "guts": 10},
             "stamina_tank": {"stamina": 20, "guts": 12},
@@ -198,6 +209,14 @@ class PolicyConfig:
     # Early-game rings matter more (proficiency compounds), so amplify the
     # ring_bonus inside the early window. 1.0 = no amplification.
     early_ring_multiplier: float = 2.5
+    # 组合圣遗物(队员全体)按部位属性 + build 优先级选: 在当前3张里选优先级最高的属性;
+    # 优先级里都没出现则随便选(取第一张). 属性 key: attack/crit_rate/crit_dmg/hp/defense/hit/resist/speed.
+    relic_attribute_priority_by_profile: dict[str, tuple[str, ...]] = field(
+        default_factory=lambda: {
+            "power_focus": ("attack", "crit_rate", "crit_dmg"),
+            "stamina_tank": ("hp", "defense", "attack", "crit_rate", "crit_dmg"),
+        }
+    )
     skill_keywords_by_profile: dict[str, tuple[str, ...]] = field(
         default_factory=lambda: {
             "balanced": ("\u653b\u51fb", "\u96c6\u4e2d", "\u751f\u547d", "\u4fdd\u62a4", "\u6d1e\u5bdf"),
@@ -223,12 +242,23 @@ class PolicyConfig:
     start_button: Rect = Rect(2040, 1318, 470, 75)
     skip_button: Rect = Rect(1740, 980, 120, 60)
     move_button: Rect = Rect(1580, 900, 220, 80)
+    # "点击以继续" prompt on the 获得奖励 reward popup. The centre card is a dead
+    # click zone; this bottom-centre prompt is the only spot that advances.
+    reward_continue_button: Rect = Rect(1180, 1250, 230, 64)
+    # 技能/潜质界面右上角 ✕ 关闭按钮(前期不学技能,进了就点它退出)。
+    skill_select_close_button: Rect = Rect(2125, 300, 90, 66)
 
 
 class TrainerPolicy:
     def __init__(self, config: PolicyConfig | None = None):
         self.config = config or PolicyConfig()
         self._pending_commission: Rect | None = None
+        # Two-step relic confirm: remembers the relic card we clicked so the next
+        # call clicks 确认 instead of re-evaluating "best" every frame. Without this
+        # a normal relic choice never reached a confirm path (selected_name is only
+        # set for the fixed initial relic), so it re-picked each frame and flipped
+        # between near-scored cards — the back-and-forth oscillation.
+        self._pending_relic: Rect | None = None
         # Set when we bail out of TRAINING_SELECT because every option's fail rate
         # is too high; the next TRAINING_HUB decision consumes it to go rest.
         self._needs_rest: bool = False
@@ -244,6 +274,8 @@ class TrainerPolicy:
         # just clicked, so the next call clicks 选择 to confirm — WITHOUT relying on
         # the left-panel selected-name OCR (which is unreliable for some characters).
         self._char_pending_confirm: str | None = None
+        # D-DAY 评鉴战日: 是否已逛过交易(打过评鉴战交易就消失,所以先交易再评鉴战)。
+        self._dday_trading_done: bool = False
 
     def decide(self, state: GameState, observation: Observation) -> Action:
         if observation.confidence < self.config.min_screen_confidence:
@@ -254,6 +286,9 @@ class TrainerPolicy:
         if observation.screen != Screen.CHARACTER_SELECT:
             self._reset_character_scroll()
             self._char_pending_confirm = None
+        # Forget any half-finished relic pick once we leave the relic screen.
+        if observation.screen != Screen.RELIC_CHOICE:
+            self._pending_relic = None
 
         # Dispatch through the screen registry instead of a hardcoded if/elif
         # chain. Each handler.decide is a verbatim copy of the branch that used
@@ -415,7 +450,11 @@ class TrainerPolicy:
         return Action("click", setting.all_events_option, "select fast-forward all events")
 
     def decide_dialogue(self, dialogue: DialogueScene) -> Action:
-        return Action("click", dialogue.skip_button, f"dialogue {dialogue.variant}, click skip")
+        # A small, calm burst of skip taps per frame (the executor paces them at
+        # ~5 Hz). Enough to blow through multi-line dialogue and dismiss a "skip?"
+        # confirm, without the frantic over-clicking that overshoots into the next
+        # screen.
+        return Action("click", dialogue.skip_button, f"dialogue {dialogue.variant}, click skip", repeat=3)
 
     def decide_training(self, choices: Iterable[TrainingChoice], state: GameState | None = None) -> Action:
         ranked = sorted(
@@ -567,17 +606,52 @@ class TrainerPolicy:
         best = max(scored, key=lambda option: option.score or 0)
         return Action("click", best.target, f"highest relic score: {best.name}={best.score}")
 
-    def decide_relic_choice(self, choice: RelicChoice) -> Action:
+    def decide_relic_choice(self, choice: RelicChoice, state: GameState | None = None) -> Action:
         if choice.selected_name and choice.confirm_button is not None:
+            self._pending_relic = None
             return Action("click", choice.confirm_button, f"confirm selected relic {choice.selected_name}")
+
+        # Two-step: we clicked a relic last frame — confirm it now instead of
+        # re-evaluating. Re-picking every frame let the choice flip between
+        # near-scored cards (OCR score noise on the highlighted card), so the bot
+        # oscillated and never confirmed. Locking the first pick + confirming
+        # breaks that loop and gives the missing confirm path for normal choices.
+        if self._pending_relic is not None and choice.confirm_button is not None:
+            self._pending_relic = None
+            return Action("click", choice.confirm_button, "confirm chosen relic")
 
         if choice.fixed_name:
             for option in choice.options:
                 if option.name == choice.fixed_name:
+                    self._pending_relic = option.target
                     return Action("click", option.target, f"choose fixed relic {option.name}")
             return Action("pause", None, f"fixed relic not visible: {choice.fixed_name}")
 
-        return self.decide_relic(choice.options)
+        # Combo relics (队员全体): pick by the build's part/attribute priority, not by score.
+        combo = self._combo_relic_pick(choice.options, state)
+        if combo is not None:
+            self._pending_relic = combo.target
+            profile = state.build_profile if state else "balanced"
+            return Action("click", combo.target, f"combo relic by build {profile}: {combo.name}({combo.attribute})")
+
+        action = self.decide_relic(choice.options)
+        if action.kind == "click":
+            self._pending_relic = action.target
+        return action
+
+    def _combo_relic_pick(self, options: Iterable[RelicOption], state: GameState | None) -> RelicOption | None:
+        """组合圣遗物(全部 is_team 且带 attribute)→ 按 build 属性优先级选;否则 None(回落到 decide_relic 按分数)."""
+        opts = list(options)
+        team = [o for o in opts if o.is_team and o.attribute]
+        if not team or len(team) < len(opts):
+            return None
+        profile = state.build_profile if state else "balanced"
+        priority = self.config.relic_attribute_priority_by_profile.get(profile, ())
+        for attr in priority:
+            for option in team:
+                if option.attribute == attr:
+                    return option
+        return team[0]  # 优先级里都没出现 → 随便选第一张
 
     def decide_commission(self, choice: CommissionChoice, state: GameState) -> Action:
         # The red 受理讨伐委托 banner on the training hub is the gate that sends us
@@ -600,13 +674,26 @@ class TrainerPolicy:
         self._pending_commission = best.target
         return Action("click", best.target, f"select commission: {best.name}")
 
-    def decide_shop(self, items: Iterable[ShopItem]) -> Action:
+    def shop_item_worth_buying(self, item: ShopItem) -> bool:
+        # 按"效果说明"判断(商品名与效果无关): 效果含想要关键词(回复体力 / 潜质点数退还)
+        # 就买。手持风扇效果是"伤害+1%"但含"潜质点数N退还"→ 仍买(白嫖潜质点)。
+        effect = item.effect or ""
+        return any(kw in effect for kw in self.config.shop_buy_effect_keywords)
+
+    def choose_shop_item(self, items: Iterable[ShopItem]) -> ShopItem | None:
+        # 返回第一个值得买的商品(按效果), 没有则 None。供 decide_shop 与 shop 检视器复用。
         for item in items:
-            key = self.config.shop_aliases.get(item.name, item.name)
-            max_price = self.config.shop_whitelist.get(key)
-            if max_price is not None and item.price <= max_price:
-                return Action("click", item.target, f"buy whitelisted item {key} for {item.price}")
-        return Action("skip", None, "skip shop: no whitelisted item at acceptable price")
+            if self.shop_item_worth_buying(item):
+                return item
+        return None
+
+    def decide_shop(self, items: Iterable[ShopItem]) -> Action:
+        # 按"效果说明"买(商品名与效果无关), 不刷新、不限价: 效果含想要关键词就买; 都不含 → 退出.
+        chosen = self.choose_shop_item(items)
+        if chosen is not None:
+            return Action("click", chosen.target, f"buy {chosen.name}: {(chosen.effect or '').strip()}")
+        self._dday_trading_done = True  # 逛完交易 → D-DAY 大厅就去评鉴战
+        return Action("skip", None, "交易: 没有想买的(回体力/潜质点退还), 退出")
 
     def skill_score(self, option: SkillOption, state: GameState) -> float:
         if option.target is None:

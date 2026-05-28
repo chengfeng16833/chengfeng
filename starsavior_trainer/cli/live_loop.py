@@ -13,6 +13,7 @@ import ctypes
 import logging
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
 
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
@@ -31,6 +32,9 @@ from starsavior_trainer.classifier import (
     journey_origin_visual_scores,
 )
 from starsavior_trainer.blessing_inspector import BlessingChoiceInspector
+from starsavior_trainer.training_inspector import TrainingInspector
+from starsavior_trainer.shop_inspector import ShopInspector
+from starsavior_trainer.round_tracker import RoundTracker
 from starsavior_trainer.executor import DryRunExecutor, PyAutoGuiExecutor, map_action_to_rect
 from starsavior_trainer.image_regions import crop_region
 from starsavior_trainer.logging_setup import get_logger
@@ -47,11 +51,12 @@ from starsavior_trainer.models import (
     RelicOption,
     RestSubmenu,
     Screen,
+    ShopScene,
     TrainingChoice,
     TrainingHubStatus,
 )
 from starsavior_trainer.ocr import NoopOcrEngine, PaddleOcrEngine
-from starsavior_trainer.policy import TrainerPolicy
+from starsavior_trainer.policy import TrainerPolicy, _is_iterable_of
 from starsavior_trainer.regions import load_region_profile, scale_region_profile, RegionProfile
 from starsavior_trainer.screen_reader import (
     PostTrainingResult,
@@ -81,6 +86,19 @@ from starsavior_trainer.vision import BlueButtonDetector, RingColorDetector
 from starsavior_trainer.screens import HANDLERS
 
 logger = get_logger("live_loop")
+
+
+# "Tap to continue / skip" advance screens: after acting we re-capture almost
+# immediately instead of waiting the full --interval, so the loop blows through
+# reward popups / dialogue / post-training quickly (the user's "keep clicking to
+# advance" request) — but still classifies before every click, so we never click
+# blindly into the screen that comes next.
+_ADVANCE_SCREENS = frozenset({Screen.DIALOGUE, Screen.POST_TRAINING, Screen.REWARD})
+_ADVANCE_SLEEP = 0.35
+# TRAINING_SELECT: the inspector clicks 力量/体力/韧性 in quick succession on the
+# SAME screen (no transition) — it only needs the preview gain to render, not the
+# full --interval. Use a short re-capture sleep so picking a training is snappy.
+_TRAINING_SELECT_SLEEP = 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +198,10 @@ def main() -> None:
     profile = base_profile
     policy = TrainerPolicy()
     blessing_inspector = BlessingChoiceInspector(policy.config.blessing_attribute_by_profile)
+    training_inspector = TrainingInspector(max_fail_rate=policy.config.max_training_fail_rate)
+    shop_inspector = ShopInspector()
     state = GameState(desired_character=args.character, build_profile=args.build_profile)
+    round_tracker = RoundTracker()
     executor = PyAutoGuiExecutor() if args.execute else DryRunExecutor()
     ocr = _create_ocr(args.use_paddle)
     blue_detector = BlueButtonDetector() if (args.blue_mode or args.hybrid_mode) else None
@@ -241,6 +262,15 @@ def main() -> None:
                 observation = classify_hybrid(screenshot, profile, ocr)
             elif args.blue_mode:
                 observation = classify_by_blue_button(screenshot, profile)
+            elif args.use_paddle:
+                # Default with real OCR: use hybrid (OCR + visual). Pure
+                # classify_by_ocr CANNOT tell apart the journey-origin screens that
+                # share the "旅程起点" title — character_select / blessing_setup /
+                # journey_start — and always resolves to character_select. That made
+                # the bot treat the blessing-setup screen as character select and
+                # scroll forever looking for the runner (the "stuck on blessing"
+                # freeze). Hybrid disambiguates them by visual content.
+                observation = classify_hybrid(screenshot, profile, ocr)
             else:
                 observation = classify_by_ocr(screenshot, profile, ocr)
 
@@ -296,6 +326,16 @@ def main() -> None:
             elif args.verbose:
                 print("  (no payload parsed)")
 
+            # Round tracking: the hub shows no turn counter, only a date — count
+            # date changes as rounds (drives the early-game training bias). Reset
+            # when a new journey is being set up (initial / character select).
+            if observation.screen in (Screen.INITIAL, Screen.CHARACTER_SELECT):
+                round_tracker.reset()
+            if observation.screen == Screen.TRAINING_HUB and isinstance(observation.payload, TrainingHubStatus):
+                round_tracker.observe_date(observation.payload.turn_label)
+            state = replace(state, current_round=round_tracker.current_round)
+            print(f"  current_round={round_tracker.current_round}")
+
             # Decide
             action = None
             if observation.screen == Screen.BLESSING_CHOICE and isinstance(observation.payload, BlessingChoice):
@@ -307,6 +347,28 @@ def main() -> None:
                     )
             elif observation.screen != Screen.BLESSING_CHOICE:
                 blessing_inspector.reset()
+            # Training: heads are random each turn, so inspect 力量/体力/韧性 (click
+            # each to reveal its +N gain) and pick whichever gives the most — a
+            # fixed bias can't know this turn's best. Mirrors the blessing inspector.
+            if observation.screen == Screen.TRAINING_SELECT and _is_iterable_of(observation.payload, TrainingChoice):
+                action = training_inspector.decide(observation.payload, state)
+                if action is not None:
+                    print(f"  training_inspector_records={training_inspector.records} pending={training_inspector.pending}")
+            elif observation.screen != Screen.TRAINING_SELECT:
+                training_inspector.reset()
+            # Journey Trading: item effects only show when an item is selected, so
+            # the inspector clicks each row to read its effect, then buys by effect
+            # (回体力/潜质点退还) — mirrors the training inspector.
+            if observation.screen == Screen.SHOP and isinstance(observation.payload, ShopScene):
+                action = shop_inspector.decide(observation.payload, policy)
+                if action is not None:
+                    print(
+                        f"  shop_inspector effects={shop_inspector.effects} "
+                        f"pending={shop_inspector.pending_index} bought={shop_inspector.bought_effects} "
+                        f"selected_effect={observation.payload.selected_effect!r}"
+                    )
+            elif observation.screen != Screen.SHOP:
+                shop_inspector.reset()
             if action is None:
                 action = policy.decide(state, observation)
             if observation.screen == Screen.CHARACTER_SELECT and action.kind == "click":
@@ -340,7 +402,14 @@ def main() -> None:
             result = executor.execute(screen_action)
             logger.info(f"executed: {result.kind} point={result.point} executed={result.executed}")
 
-            time.sleep(args.interval)
+            # Advance screens (reward / dialogue / post-training) re-capture fast so
+            # we don't crawl one click per --interval through them.
+            if observation.screen in _ADVANCE_SCREENS:
+                time.sleep(_ADVANCE_SLEEP)
+            elif observation.screen == Screen.TRAINING_SELECT:
+                time.sleep(min(_TRAINING_SELECT_SLEEP, args.interval))
+            else:
+                time.sleep(args.interval)
 
     except KeyboardInterrupt:
         print("\nstopped by user")

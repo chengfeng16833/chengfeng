@@ -36,6 +36,12 @@ _FAST_ANCHORS: tuple[str, ...] = (
     "skill_select_title",
     "post_training_title",
     "dialogue_journey_title",
+    # Story-intro cutscene has a top-right "SKIP" button (OCR-readable text, unlike
+    # the journey dialogue's >> icon). Reading it in the fast pass lets the dialogue
+    # signature catch the intro immediately instead of falling through to the full
+    # 54-region sweep (which left it UNKNOWN at ~3.6s/frame).
+    "dialogue_intro_skip_button",
+    "reward_title",
 )
 
 
@@ -204,6 +210,15 @@ def classify_hybrid(
     """
     # Fast path — blue button color detection.
     ocr_result = classify_by_ocr(image, profile, ocr, ocr_min_confidence)
+
+    # Journey DIALOGUE shares the "旅程事件" title with EVENT_CHOICE. In the fast
+    # anchor pass the option rows aren't read, so a dialogue scores as event_choice
+    # off the title alone — then the policy tries to pick an option, finds none, and
+    # pauses (the "skip never happens / stuck on cutscene" symptom). If there are no
+    # real option rows, it's a skippable dialogue. This OCR cost is paid ONLY when a
+    # frame already looks like event_choice, not on every frame.
+    if ocr_result.screen == Screen.EVENT_CHOICE and not _has_real_event_options(image, profile, ocr):
+        return Observation(screen=Screen.DIALOGUE, confidence=max(ocr_result.confidence, 0.90))
     # Blessing choice shares the "旅程起点" anchor text with the journey-origin
     # screens, so its visual signature only disambiguates that group. Applying it
     # unconditionally misfires on any screen with a bottom-right blue button plus
@@ -236,6 +251,29 @@ def classify_hybrid(
 
     # Fallback — OCR-based anchor text matching.
     return ocr_result
+
+
+def _has_real_event_options(image: Image.Image, profile: RegionProfile, ocr: OcrEngine) -> bool:
+    """True if the screen has actual selectable event-choice option rows.
+
+    Distinguishes a real EVENT_CHOICE from a journey DIALOGUE: both carry the
+    "旅程事件" title, but only event_choice has option rows with text. Options are
+    bottom-aligned on this UI, so option_3/4 are filled on every real event while
+    option_1 is almost always empty — we scan options 2-4 (skipping the dead
+    option_1 read) and accept any with real text. Fewer reads = faster recognition,
+    which matters because this runs on every dialogue frame too."""
+    for index in range(2, 5):
+        rect = profile.regions.get(f"event_choice_option_{index}")
+        if rect is None:
+            continue
+        try:
+            text = ocr.read_text(crop_region(image, rect)).text.strip()
+        except Exception as e:
+            logger.debug(f"[_has_real_event_options] OCR failed on option {index}: {e}")
+            continue
+        if len(text) >= 2:
+            return True
+    return False
 
 
 def _looks_like_journey_start(image: Image.Image, profile: RegionProfile, ocr: OcrEngine) -> bool:
@@ -337,6 +375,7 @@ ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
         "event_choice_option_4",
     ],
     Screen.RELIC_CHOICE: ["relic_choice_title"],
+    Screen.REWARD: ["reward_title"],
     Screen.COMMISSION_SELECT: [
         "commission_select_anchor_title",
         "commission_select_option_1_name",
@@ -345,13 +384,24 @@ ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
         "commission_select_accept_button",
     ],
     Screen.SHOP: [
-        "shop_item_1",
+        "shop_refresh_button",
+        "shop_buy_button",
+        "shop_detail_effect",
         "shop_item_1_name",
         "shop_item_2_name",
+        "shop_item_3_name",
         "shop_item_1_price",
         "shop_item_2_price",
+        "shop_item_3_price",
     ],
-    Screen.BATTLE: ["battle_skip_button", "battle_title", "battle_entry_button", "battle_accept_button"],
+    Screen.BATTLE: [
+        "battle_skip_button",
+        "battle_title",
+        "battle_entry_button",
+        "battle_accept_button",
+        "battle_skip_battle_button",
+        "battle_confirm_title",
+    ],
     Screen.SKILL_SELECT: ["skill_select_title"],
     Screen.POST_TRAINING: [
         "post_training_result_text",
@@ -376,9 +426,10 @@ ANCHOR_TEXT_BY_SCREEN: dict[Screen, tuple[str, ...]] = {
     Screen.REST_SUBMENU: ("\u9732\u5bbf", "\u51a5\u60f3"),
     Screen.EVENT_CHOICE: ("\u65c5\u7a0b\u4e8b\u4ef6", "\u4e8b\u4ef6"),
     Screen.RELIC_CHOICE: ("\u9009\u62e9\u5956\u52b1",),
+    Screen.REWARD: ("\u83b7\u5f97\u5956\u52b1",),
     Screen.COMMISSION_SELECT: ("\u59d4\u6258",),
     Screen.SHOP: ("\u8d2d\u4e70",),
-    Screen.BATTLE: ("\u8df3\u8fc7\u6218\u6597", "\u8bc4\u9274\u6218", "\u5e73\u9274\u6218", "\u6218\u6597", "\u63a5\u53d7"),
+    Screen.BATTLE: ("\u8df3\u8fc7\u6218\u6597", "\u8bc4\u9274\u6218", "\u6218\u6597", "\u63a5\u53d7"),
     Screen.SKILL_SELECT: ("\u6f5c\u8d28", "\u6280\u80fd", "\u5b66\u4e60"),
     Screen.POST_TRAINING: ("\u63d0\u5347", "\u4e8b\u4ef6", "+"),
     Screen.REGION_MOVE: ("\u79fb\u52a8",),
@@ -525,15 +576,32 @@ def _has_commission_select_signature(anchors: dict[str, str]) -> bool:
 
 
 def _has_shop_signature(anchors: dict[str, str]) -> bool:
-    # shop_item_1 covers the full first row including the "购买" button on the right.
-    item1_text = anchors.get("shop_item_1", "")
+    # Journey Trading (交易) sits on the D-DAY background, so battle_title reads
+    # 参加评鉴战 and fallback scoring would otherwise call it BATTLE — the shop needs
+    # a signature to pre-empt that. The unique, ALWAYS-present marker is the top-right
+    # 「刷新」(refresh) button (the 1级 D-DAY hub does NOT have it). The bottom 「购买」
+    # button only appears once an item is selected — so relying on 购买 alone made the
+    # screen go unknown whenever nothing was selected (just entered / a SOLD OUT item).
+    # Accept EITHER, corroborated by any shop content (item name/price or the selected
+    # item's effect detail) so a stray OCR elsewhere can't false-trigger.
+    refresh_text = anchors.get("shop_refresh_button", "")
+    buy_text = anchors.get("shop_buy_button", "")
+    if not (contains_any_text(refresh_text, ("刷新",)) or contains_any_text(buy_text, ("购买", "购"))):
+        return False
+    detail = anchors.get("shop_detail_effect", "")
     names = " ".join(anchors.get(f"shop_item_{i}_name", "") for i in range(1, 6))
     prices = " ".join(anchors.get(f"shop_item_{i}_price", "") for i in range(1, 6))
-    return (
-        contains_any_text(item1_text, ("购买", "shop", "商品", "交易"))
-        and bool(names.strip())
-        and bool(prices.strip())
-    )
+    return bool(detail.strip() or names.strip() or prices.strip())
+
+
+def _has_battle_signature(anchors: dict[str, str]) -> bool:
+    # 基础评鉴战 entry confirm: a centred dialog (battle_title/skip_button live in the
+    # top corners and read empty here), so classify_by_ocr would be UNKNOWN and the
+    # blue-button fallback misreads the 跳过战斗 blue button as event_fast_forward.
+    # The 跳过战斗 button text + 评鉴战 dialog title uniquely identify it as BATTLE.
+    skip = anchors.get("battle_skip_battle_button", "")
+    title = anchors.get("battle_confirm_title", "")
+    return contains_any_text(skip, ("跳过战斗", "跳过")) and contains_any_text(title, ("评鉴战", "鉴战"))
 
 
 def _has_training_hub_shop_signature(anchors: dict[str, str]) -> bool:
@@ -561,6 +629,15 @@ def _has_rest_submenu_signature(anchors: dict[str, str]) -> bool:
         )
     )
     return contains_any_text(rest_text, ("\u9732\u5bbf", "\u4f4f\u5904", "\u51a5\u60f3\u5ba4"))
+
+
+def _has_reward_signature(anchors: dict[str, str]) -> bool:
+    # "获得奖励" reward popup. Its title sits centre-top (reward_title), a region
+    # that is empty on the journey-origin screens — so this fires only on the
+    # real reward popup and pre-empts the weak character_select fallback (which
+    # otherwise mis-scores this screen and stalls the character-scroll loop).
+    title = anchors.get("reward_title", "")
+    return contains_any_text(title, ("获得奖励", "获得", "奖励"))
 
 
 def _has_training_select_signature(anchors: dict[str, str]) -> bool:

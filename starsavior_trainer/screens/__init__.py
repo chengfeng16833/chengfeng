@@ -17,12 +17,14 @@ REFACTOR.md "待物理搬迁".
 from __future__ import annotations
 
 from starsavior_trainer.classifier import (
+    _has_battle_signature,
     _has_commission_select_signature,
     _has_dialogue_signature,
     _has_event_choice_signature,
     _has_initial_signature,
     _has_post_training_signature,
     _has_rest_submenu_signature,
+    _has_reward_signature,
     _has_shop_signature,
     _has_training_hub_shop_signature,
     _has_training_select_signature,
@@ -44,6 +46,7 @@ from starsavior_trainer.models import (
     RestSubmenu,
     Screen,
     ShopItem,
+    ShopScene,
     SkillOption,
     TrainingChoice,
     TrainingHubStatus,
@@ -123,11 +126,20 @@ def _decide_event_fast_forward_setting(obs, state, policy):
 def _decide_dialogue(obs, state, policy):
     if isinstance(obs.payload, DialogueScene):
         return policy.decide_dialogue(obs.payload)
-    return Action("click", policy.config.skip_button, "dialogue screen, click skip")
+    return Action("click", policy.config.skip_button, "dialogue screen, click skip", repeat=3)
 
 
 def _decide_training_hub(obs, state, policy):
     if isinstance(obs.payload, TrainingHubStatus):
+        # D-DAY 评鉴战日: 大厅变成「评鉴战」+「交易」(取代 训练/委托/休息)。必须先逛
+        # 交易(打过评鉴战交易就消失)、再去评鉴战。_dday_trading_done 由 decide_shop 逛完置位。
+        if obs.payload.rating_battle_button is not None:
+            if not policy._dday_trading_done and obs.payload.trading_button is not None:
+                return Action("click", obs.payload.trading_button, "D-DAY 大厅: 先去交易")
+            return Action("click", obs.payload.rating_battle_button, "D-DAY 大厅: 去评鉴战")
+        # Not a D-DAY hub → an ordinary turn. Clear the one-shot trading flag so the
+        # NEXT 评鉴战 day shops again before its battle.
+        policy._dday_trading_done = False
         # If we just bailed out of TRAINING_SELECT because every option's fail rate
         # was too high (low stamina), rest now instead of re-entering training —
         # otherwise hub<->training_select would loop forever. One-shot flag.
@@ -139,14 +151,7 @@ def _decide_training_hub(obs, state, policy):
             return Action("click", obs.payload.commission_button, "training hub, commission alert")
         if obs.payload.has_shop_alert and obs.payload.shop_button is not None:
             return Action("click", obs.payload.shop_button, "training hub, shop alert")
-        if obs.payload.skill_button is not None and (
-            obs.payload.can_learn_skill
-            or (
-                obs.payload.potential_points is not None
-                and obs.payload.potential_points >= policy.config.min_skill_points
-            )
-        ):
-            return Action("click", obs.payload.skill_button, "training hub, open skill learning")
+        # 技能学习留到跑马完成后(前期学技能不影响跑马),大厅前期不中途进技能界面。
         if obs.payload.training_button is not None:
             return Action("click", obs.payload.training_button, "training hub, enter training")
     return Action("click", policy.config.start_button, "training hub, click training")
@@ -172,7 +177,7 @@ def _decide_event_choice(obs, state, policy):
 
 def _decide_relic_choice(obs, state, policy):
     if isinstance(obs.payload, RelicChoice):
-        return policy.decide_relic_choice(obs.payload)
+        return policy.decide_relic_choice(obs.payload, state)
     if not _is_iterable_of(obs.payload, RelicOption):
         return Action("pause", None, "relic screen missing options")
     return policy.decide_relic(obs.payload)
@@ -186,6 +191,11 @@ def _decide_commission_select(obs, state, policy):
 
 
 def _decide_shop(obs, state, policy):
+    # Fallback decision (blue mode / no inspector). The live loop normally drives
+    # the shop via ShopInspector (reads each item's effect by clicking it); here we
+    # just decide on whatever item effects we already have.
+    if isinstance(obs.payload, ShopScene):
+        return policy.decide_shop(obs.payload.items)
     if not _is_iterable_of(obs.payload, ShopItem):
         return Action("pause", None, "shop screen missing item list")
     return policy.decide_shop(obs.payload)
@@ -200,9 +210,8 @@ def _decide_battle(obs, state, policy):
 
 
 def _decide_skill_select(obs, state, policy):
-    if _is_iterable_of(obs.payload, SkillOption):
-        return policy.decide_skill(obs.payload, state)
-    return Action("pause", None, "skill select screen missing options")
+    # 技能学习留到跑马完成后:前期进了技能/潜质界面就点右上角 ✕ 退出,不在前期学技能。
+    return Action("click", policy.config.skill_select_close_button, "skill select: 前期不学技能, 点 ✕ 退出")
 
 
 def _decide_post_training(obs, state, policy):
@@ -213,6 +222,17 @@ def _decide_post_training(obs, state, policy):
 
 def _decide_region_move(obs, state, policy):
     return Action("click", policy.config.move_button, "region move screen, click move")
+
+
+def _decide_reward(obs, state, policy):
+    # 获得奖励 popup: the centre relic card is a dead click zone — only the
+    # "点击以继续" prompt advances. Click it; the live loop re-captures quickly
+    # (advance-screen short sleep) so sequential popups blow through fast.
+    return Action(
+        "click",
+        policy.config.reward_continue_button,
+        "reward obtained (获得奖励), click 点击以继续 to advance",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +287,11 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
     Screen.SHOP: DelegatingScreenHandler(
         Screen.SHOP, _decide_shop, priority=7,
         anchor_fn=_has_shop_signature, anchor_confidence=1.0,
-        parse_fn=parse_shop, parse_needs_image=True, ocr_prefixes=["shop_item"],
+        # Only the selected item's effect detail needs OCR — the row click targets
+        # come from the region profile, and names/prices OCR unreliably and aren't
+        # used for the buy decision (which keys off the effect). The shop inspector
+        # clicks each row to reveal its effect in this one detail region.
+        parse_fn=parse_shop, parse_needs_image=True, ocr_prefixes=["shop_detail"],
     ),
     Screen.TRAINING_HUB: DelegatingScreenHandler(
         Screen.TRAINING_HUB, _decide_training_hub, priority=8,
@@ -310,7 +334,12 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         parse_fn=parse_relic_choice, parse_needs_image=True, ocr_prefixes=["relic_choice"],
     ),
     Screen.BATTLE: DelegatingScreenHandler(
-        Screen.BATTLE, _decide_battle,
+        Screen.BATTLE, _decide_battle, priority=10,
+        # 基础评鉴战 entry confirm needs an OCR signature (跳过战斗 + 评鉴战 title) so it
+        # doesn't fall through to the blue-button fallback (→ event_fast_forward).
+        # Priority 10 = checked after the other signatures (it's specific enough not
+        # to collide), still before the fallback anchor-text scoring.
+        anchor_fn=_has_battle_signature, anchor_confidence=1.0,
         parse_fn=parse_battle, parse_needs_image=True, ocr_prefixes=["battle"],
     ),
     Screen.SKILL_SELECT: DelegatingScreenHandler(
@@ -320,6 +349,14 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
     Screen.REGION_MOVE: DelegatingScreenHandler(
         Screen.REGION_MOVE, _decide_region_move,
         parse_fn=parse_region_move, ocr_prefixes=["region_move"],
+    ),
+    # 获得奖励 reward popup. Priority 2 (before DIALOGUE=4) so its unique centre
+    # title pre-empts any accidental dialogue/character_select match. No parse_fn
+    # — the policy clicks a fixed continue button.
+    Screen.REWARD: DelegatingScreenHandler(
+        Screen.REWARD, _decide_reward, priority=2,
+        anchor_fn=_has_reward_signature, anchor_confidence=1.0,
+        parse_fn=None, ocr_prefixes=None,
     ),
 }
 

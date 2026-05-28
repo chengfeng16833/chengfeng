@@ -54,7 +54,17 @@ class PyAutoGuiExecutor:
         if action.kind == "scroll":
             self._drag_scroll(point, action.scroll_clicks)
             return ExecutionResult(True, action.kind, point, action.reason)
+        # repeat > 1 turns the click into a rapid burst for "tap to continue /
+        # skip" advance screens (reward popup, dialogue, post-training) so we
+        # don't crawl one click per loop iteration.
+        repeat = max(1, action.repeat)
         self._pyautogui.click()
+        if repeat > 1:
+            import time
+
+            for _ in range(repeat - 1):
+                time.sleep(0.18)  # ~5 Hz burst — calm enough not to over-click / overshoot
+                self._pyautogui.click()
         return ExecutionResult(True, action.kind, point, action.reason)
 
     def _hover_move(self, point: tuple[int, int]) -> None:
@@ -137,6 +147,7 @@ def map_action_to_rect(action: Action, source_resolution: tuple[int, int], dest_
         reason=action.reason,
         confidence=action.confidence,
         scroll_clicks=action.scroll_clicks,
+        repeat=action.repeat,
     )
 
 

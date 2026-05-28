@@ -24,6 +24,9 @@ class Screen(str, Enum):
     BATTLE = "battle"
     SKILL_SELECT = "skill_select"
     REGION_MOVE = "region_move"
+    # "获得奖励" reward-obtained popup (a fixed relic is granted, no choice). The
+    # centre card is a dead click zone; only the "点击以继续" prompt advances it.
+    REWARD = "reward"
     UNKNOWN = "unknown"
 
 
@@ -46,6 +49,11 @@ class Action:
     reason: str
     confidence: float = 1.0
     scroll_clicks: int = 0
+    # Number of times to repeat a click in one execution. >1 turns a single
+    # click into a rapid burst — used for "tap to continue / skip" advance
+    # screens (reward popup, dialogue, post-training) so they're blown through
+    # quickly instead of one click per loop iteration.
+    repeat: int = 1
 
 
 @dataclass(frozen=True)
@@ -91,6 +99,10 @@ class RelicOption:
     name: str
     score: int | None
     target: Rect
+    # 部位映射出的战斗属性(attack/crit_rate/crit_dmg/hp/defense/hit/resist/speed),
+    # 与是否"队员全体"(组合圣遗物)。组合圣遗物按属性+build优先级选,普通按 score。
+    attribute: str | None = None
+    is_team: bool = False
 
 
 @dataclass(frozen=True)
@@ -123,6 +135,26 @@ class ShopItem:
     name: str
     price: int
     target: Rect
+    # 效果说明文本(商品名与效果无关,买/不买看效果). 需逐个点开商品读取。
+    effect: str = ""
+
+
+@dataclass(frozen=True)
+class ShopScene:
+    """Journey Trading (交易) screen state.
+
+    The right-side list (``items``) gives each row's click target; effects only
+    show in the centre detail once an item is selected, so ``selected_effect`` is
+    the *currently-selected* item's effect text for this frame. The shop inspector
+    clicks each row in turn, attributing each frame's ``selected_effect`` to the
+    row it clicked last, then buys by effect (回体力 / 潜质点退还) via ``buy_button``
+    or leaves via ``back_button``.
+    """
+
+    items: tuple[ShopItem, ...] = ()
+    selected_effect: str = ""
+    buy_button: Rect | None = None
+    back_button: Rect | None = None
 
 
 @dataclass(frozen=True)
@@ -233,6 +265,9 @@ class TrainingHubStatus:
     rest_button: Rect | None = None
     skill_button: Rect | None = None
     shop_button: Rect | None = None
+    # D-DAY 评鉴战日大厅: 这俩按钮取代平时的 训练/委托/休息(评鉴战上、交易下)。
+    rating_battle_button: Rect | None = None
+    trading_button: Rect | None = None
     has_commission_alert: bool = False
     has_shop_alert: bool = False
     can_learn_skill: bool = False

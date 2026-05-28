@@ -5,6 +5,7 @@ from PIL import Image
 
 from starsavior_trainer.classifier import (
     _classify_journey_origin_by_visual,
+    _has_real_event_options,
     _match_screen,
     classify_hybrid,
 )
@@ -23,6 +24,26 @@ class ClassifierTest(unittest.TestCase):
         )
 
         self.assertEqual(screen, Screen.INITIAL)
+        self.assertGreaterEqual(confidence, 0.70)
+
+    def test_reward_title_classifies_as_reward(self) -> None:
+        screen, confidence = _match_screen({"reward_title": "获得奖励"})
+
+        self.assertEqual(screen, Screen.REWARD)
+        self.assertGreaterEqual(confidence, 0.70)
+
+    def test_reward_signature_wins_over_character_select_旅程起点_overlap(self) -> None:
+        # The 获得奖励 popup lands over the journey map, whose top-left can still
+        # OCR as 旅程起点 (the character_select anchor text). Without the reward
+        # signature this scored as character_select and stalled the scroll loop.
+        screen, confidence = _match_screen(
+            {
+                "reward_title": "获得奖励",
+                "character_select_anchor_title": "旅程起点",
+            }
+        )
+
+        self.assertEqual(screen, Screen.REWARD)
         self.assertGreaterEqual(confidence, 0.70)
 
     def test_visual_journey_origin_detects_character_select(self) -> None:
@@ -71,12 +92,27 @@ class ClassifierTest(unittest.TestCase):
         self.assertEqual(screen, Screen.BATTLE)
         self.assertGreaterEqual(confidence, 0.70)
 
-    def test_battle_accept_detail_tolerates_common_ocr_typo(self) -> None:
+    def test_battle_entry_and_accept_classify_as_battle(self) -> None:
         screen, confidence = _match_screen(
             {
                 "battle_title": "\u53c2\u52a0\u8bc4\u9274\u6218",
-                "battle_entry_button": "\u5e73\u9274\u6218 \u4e00\u822c",
+                "battle_entry_button": "\u8bc4\u9274\u6218 \u4e00\u822c",
                 "battle_accept_button": "\u63a5\u53d7",
+            }
+        )
+
+        self.assertEqual(screen, Screen.BATTLE)
+        self.assertGreaterEqual(confidence, 0.70)
+
+    def test_rating_battle_confirm_classifies_as_battle(self) -> None:
+        # 基础评鉴战 entry confirm: a centred dialog whose battle regions (top-corner)
+        # read empty, so classify_by_ocr is UNKNOWN and the blue-button fallback
+        # misreads the 跳过战斗 blue button as event_fast_forward. The 跳过战斗 button +
+        # 评鉴战 title give it a proper BATTLE signature instead.
+        screen, confidence = _match_screen(
+            {
+                "battle_skip_battle_button": "跳过战斗",  # 跳过战斗
+                "battle_confirm_title": "基础评鉴战",  # 基础评鉴战
             }
         )
 
@@ -134,6 +170,38 @@ class ClassifierTest(unittest.TestCase):
         )
 
         self.assertEqual(screen, Screen.REST_SUBMENU)
+        self.assertGreaterEqual(confidence, 0.70)
+
+    def test_shop_signature_wins_over_battle_overlap(self) -> None:
+        # Journey Trading (交易) sits on the D-DAY background, so battle_title OCRs
+        # 参加评鉴战 (a BATTLE anchor word) — without a shop signature it falls to
+        # fallback scoring and misclassifies as BATTLE (1.00). The 购买 button plus
+        # the selected item's effect detail identify the trading screen instead.
+        screen, confidence = _match_screen(
+            {
+                "battle_title": "参加评鉴战",  # 参加评鉴战
+                "shop_buy_button": "购买",  # 购买
+                "shop_detail_effect": "潜质点数8退还",  # 潜质点数8退还
+                "shop_item_2_name": "高级牛肉义",  # 高级牛肉义
+            }
+        )
+
+        self.assertEqual(screen, Screen.SHOP)
+        self.assertGreaterEqual(confidence, 0.70)
+
+    def test_shop_signature_via_refresh_when_no_item_selected(self) -> None:
+        # 刚进交易界面 / 没选中任何商品时, 中间详情和底部「购买」按钮都不显示, 只有右上
+        # 「刷新」常驻 + 右侧商品列表。签名必须靠「刷新」识别(否则像实机那样 unknown)。
+        screen, confidence = _match_screen(
+            {
+                "battle_title": "参加评鉴战",  # D-DAY 背景(否则会兜底成 BATTLE)
+                "shop_refresh_button": "刷新",  # 刷新
+                "shop_item_3_name": "身风扇",  # 身风扇
+                "shop_item_3_price": "40",
+            }
+        )
+
+        self.assertEqual(screen, Screen.SHOP)
         self.assertGreaterEqual(confidence, 0.70)
 
     def test_journey_dialogue_text_wins_over_event_choice_title(self) -> None:
@@ -212,9 +280,42 @@ class ClassifierTest(unittest.TestCase):
         self.assertNotEqual(screen, Screen.COMMISSION_SELECT)
 
 
+    def test_intro_skip_button_classifies_as_dialogue(self) -> None:
+        # The story-intro cutscene's only reliable text anchor is its top-right
+        # "SKIP" button; the dialogue signature must catch it (case-insensitively)
+        # so the intro isn't left UNKNOWN (which fell through to a ~3.6s sweep).
+        screen, confidence = _match_screen({"dialogue_intro_skip_button": "SKIP"})
+
+        self.assertEqual(screen, Screen.DIALOGUE)
+        self.assertGreaterEqual(confidence, 0.70)
+
+    def test_has_real_event_options_false_when_option_rows_blank(self) -> None:
+        # A journey DIALOGUE shares the "\u65c5\u7a0b\u4e8b\u4ef6" title but has no option rows.
+        profile = load_region_profile("config/regions/2560x1440.json")
+        image = Image.new("RGB", (2560, 1440))
+
+        self.assertFalse(_has_real_event_options(image, profile, _FixedOcr("")))
+
+    def test_has_real_event_options_true_when_option_row_has_text(self) -> None:
+        profile = load_region_profile("config/regions/2560x1440.json")
+        image = Image.new("RGB", (2560, 1440))
+
+        self.assertTrue(_has_real_event_options(image, profile, _FixedOcr("\u5bf9\u653b\u51fb\u6709\u5e2e\u52a9\u7684\u8bad\u7ec3\u6559\u6750")))
+
+
 class _JourneyOriginOcr:
     def read_text(self, _image: Image.Image) -> OcrResult:
         return OcrResult(text="\u65c5\u7a0b\u8d77\u70b9", confidence=0.99)
+
+
+class _FixedOcr:
+    """OCR stub that returns the same text for every region (for option-row tests)."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def read_text(self, _image: Image.Image) -> OcrResult:
+        return OcrResult(text=self._text, confidence=0.99)
 
 
 if __name__ == "__main__":

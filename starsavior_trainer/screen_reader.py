@@ -29,6 +29,7 @@ from starsavior_trainer.models import (
     RelicOption,
     RestSubmenu,
     ShopItem,
+    ShopScene,
     SkillOption,
     TrainingChoice,
     TrainingHubStatus,
@@ -59,7 +60,11 @@ ATTRIBUTE_ALIASES = {
 
 RELIC_NAME_ALIASES = {
     "soft_toy_friend": ("\u8f6f\u7ef5\u7ef5\u7684\u73a9\u5076\u670b\u53cb", "\u73a9\u5076\u670b\u53cb"),
-    "annoying_cuckoo_clock": ("\u70e6\u4eba\u7684\u5e03\u8c37\u9e1f\u65f6\u949f", "\u5e03\u8c37\u9e1f\u65f6\u949f"),
+    # The cuckoo clock is the highlighted/enlarged card on the initial relic
+    # screen, so its name OCRs garbled (e.g. "\u65f6\u5e03\u8c37\u9e1f\u65f6"). Match on the distinctive
+    # "\u5e03\u8c37\u9e1f" (cuckoo) alone so it's still recognized \u2014 otherwise the fixed initial
+    # pick fails to trigger and the bot picks a different relic by score.
+    "annoying_cuckoo_clock": ("\u70e6\u4eba\u7684\u5e03\u8c37\u9e1f\u65f6\u949f", "\u5e03\u8c37\u9e1f\u65f6\u949f", "\u5e03\u8c37\u9e1f"),
     "balanced_scale": ("\u5e73\u8861\u7684\u5929\u79e4", "\u5929\u79e4"),
 }
 
@@ -668,8 +673,15 @@ def parse_relic_choice(
             continue
         name = parse_relic_name(texts.get(f"{key}_name", ""))
         score = parse_first_int(texts.get(f"{key}_score", ""))
+        card_text = texts.get(key, "")
         if name is not None or score is not None:
-            options.append(RelicOption(name=name or f"unknown_relic_{index}", score=score, target=target))
+            options.append(RelicOption(
+                name=name or f"unknown_relic_{index}",
+                score=score,
+                target=target,
+                attribute=_relic_attribute_from_name(name),
+                is_team="队员全体" in card_text,  # 队员全体 = 组合圣遗物
+            ))
 
     if not options:
         return None
@@ -695,6 +707,31 @@ def parse_relic_name(text: str) -> str | None:
     # garbled) from being dropped from the options list.
     cleaned = (text or "").strip()
     return cleaned or None
+
+
+# 部位名(圣遗物名字尾部)→ 战斗属性. 跨系列固定.
+_RELIC_PART_ATTRIBUTE = {
+    "手套": "attack",
+    "帽子": "crit_rate",
+    "项链": "crit_dmg",
+    "项炼": "crit_dmg",
+    "裤子": "defense",
+    "铠甲": "hp",
+    "胸甲": "hp",
+    "眼镜": "hit",
+    "鞋子": "speed",
+    "披风": "resist",
+}
+
+
+def _relic_attribute_from_name(name: str | None) -> str | None:
+    """按部位名(名字尾部)映射出战斗属性; 认不出返回 None."""
+    if not name:
+        return None
+    for part, attr in _RELIC_PART_ATTRIBUTE.items():
+        if part in name:
+            return attr
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -732,6 +769,16 @@ def parse_training_hub(
         ("\u53ef\u4e60\u5f97", "\u4e60\u5f97", "learn"),
     )
 
+    # D-DAY (\u8bc4\u9274\u6218\u65e5) hub: the right column swaps \u8bad\u7ec3/\u59d4\u6258/\u4f11\u606f for \u8bc4\u9274\u6218(top) +
+    # \u4ea4\u6613(bottom). When those buttons OCR there, surface both so the policy goes
+    # \u4ea4\u6613 first (\u6253\u8fc7\u8bc4\u9274\u6218\u4ea4\u6613\u5c31\u6d88\u5931), then \u8bc4\u9274\u6218. Detection keys off the button
+    # text so a normal hub (\u8bad\u7ec3/\u4f11\u606f there) leaves these None.
+    is_dday = contains_any_text(
+        texts.get("training_hub_rating_battle", ""), ("\u8bc4\u9274\u6218", "\u9274\u6218")
+    ) or contains_any_text(texts.get("training_hub_trading", ""), ("\u4ea4\u6613",))
+    rating_battle_button = profile.regions.get("training_hub_rating_battle") if is_dday else None
+    trading_button = profile.regions.get("training_hub_trading") if is_dday else None
+
     return TrainingHubStatus(
         turn_label=turn_label,
         coins=coins,
@@ -745,6 +792,8 @@ def parse_training_hub(
         has_commission_alert=has_commission_alert,
         has_shop_alert=has_shop_alert,
         can_learn_skill=can_learn_skill,
+        rating_battle_button=rating_battle_button,
+        trading_button=trading_button,
     )
 
 
@@ -1034,12 +1083,19 @@ def parse_shop(
     region_texts: Iterable[RegionText],
     profile: RegionProfile,
     image: Image.Image | None = None,
-) -> list[ShopItem] | None:
-    """Read shop items with names and prices."""
-    texts = {item.name: item.text for item in region_texts}
+) -> ShopScene | None:
+    """Read Journey Trading (交易) items: one ShopItem per defined row.
 
-    if not _has_shop_anchor(texts, profile):
-        return None
+    The right-side list OCRs unreliably (small text over a textured/transparent
+    panel, with strikethrough prices), and the buy decision keys off each item's
+    *effect* — which only shows in the centre detail panel once the item is
+    selected, so the shop inspector reads it by clicking each row. We therefore
+    return one clickable item per ``shop_item_N`` row regardless of whether its
+    name/price OCR'd; name/price are filled best-effort for logging/identity. The
+    selected item's effect detail is read separately (``shop_detail_effect``) and
+    attributed to the clicked row by the inspector.
+    """
+    texts = {item.name: item.text for item in region_texts}
 
     items: list[ShopItem] = []
     for idx in range(1, 6):
@@ -1048,23 +1104,20 @@ def parse_shop(
             continue
         name = texts.get(f"shop_item_{idx}_name", "").strip()
         price = parse_first_int(texts.get(f"shop_item_{idx}_price", ""))
-        if not name or price is None:
-            continue
-
         button = profile.regions.get(f"shop_item_{idx}_button")
         click_target = button if button is not None else target
-
-        items.append(ShopItem(name=name, price=price, target=click_target))
+        items.append(ShopItem(name=name, price=price if price is not None else 0, target=click_target))
 
     if not items:
         return None
-    return items
-
-
-def _has_shop_anchor(texts: dict[str, str], profile: RegionProfile) -> bool:
-    names = " ".join(texts.get(f"shop_item_{i}_name", "") for i in range(1, 6))
-    prices = " ".join(texts.get(f"shop_item_{i}_price", "") for i in range(1, 6))
-    return bool(names.strip() + prices.strip())
+    return ShopScene(
+        items=tuple(items),
+        # The selected item's effect detail (centre panel) — only this needs OCR;
+        # the shop inspector attributes it to the row it clicked last turn.
+        selected_effect=texts.get("shop_detail_effect", "").strip(),
+        buy_button=profile.regions.get("shop_buy_button"),
+        back_button=profile.regions.get("shop_back_button"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1102,6 +1155,27 @@ def parse_battle(
 ) -> BattleScene | None:
     """Detect battle screens and return the next battle action."""
     texts = {item.name: item.text for item in region_texts}
+
+    # 跳过战斗 二次确认框: 点「跳过战斗」后弹出"将一并跳过评鉴战前的故事…确定要跳过评鉴
+    # 战斗吗?"(取消 / 蓝色「跳过战斗」)。必须点框内蓝色「跳过战斗」确认 —— 底层按钮被遮住,
+    # 再点它只会死循环。靠「取消」按钮区分(基础评鉴战确认界面那一侧是「开始委托」, 无取消)。
+    skip_confirm_button = profile.regions.get("battle_skip_confirm_button")
+    if (
+        skip_confirm_button is not None
+        and contains_any_text(texts.get("battle_skip_confirm_cancel", ""), ("取消",))
+        and contains_any_text(texts.get("battle_skip_confirm_button", ""), ("跳过", "战斗"))
+    ):
+        return BattleScene(skip_button=skip_confirm_button, confirm_button=None, confirm_active=False)
+
+    # 基础评鉴战 entry confirm (是否要进行评鉴战?): always pick 跳过战斗 — skip the
+    # battle and take the result instantly (开始委托 actually fights). confirm_active
+    # stays False so decide_battle clicks this skip button, not a confirm button.
+    skip_battle_button = profile.regions.get("battle_skip_battle_button")
+    if skip_battle_button is not None and (
+        contains_any_text(texts.get("battle_skip_battle_button", ""), ("跳过战斗", "跳过"))
+        or contains_any_text(texts.get("battle_confirm_title", ""), ("评鉴战", "鉴战"))
+    ):
+        return BattleScene(skip_button=skip_battle_button, confirm_button=None, confirm_active=False)
 
     action_button = profile.regions.get("battle_entry_button") or profile.regions.get("battle_skip_button")
     if action_button is None:
