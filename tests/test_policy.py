@@ -960,6 +960,34 @@ class RoundStrategyTrainingTests(unittest.TestCase):
         self.assertEqual(early.target, power.target)
         self.assertIn("power", early.reason)
 
+    def test_early_round_amplifies_ring_bonus_2_5x(self) -> None:
+        # guts isolates the ring effect (no power/stamina early stat weight).
+        policy = TrainerPolicy()
+        rainbow = TrainingChoice("guts", 0, "rainbow", 0, Rect(0, 0, 10, 10))
+        self.assertEqual(policy.training_score(rainbow, GameState(current_round=None)), 40)
+        self.assertEqual(policy.training_score(rainbow, GameState(current_round=3)), 100)
+
+    def test_ring_amplification_off_after_early_window(self) -> None:
+        policy = TrainerPolicy()
+        rainbow = TrainingChoice("guts", 0, "rainbow", 0, Rect(0, 0, 10, 10))
+        self.assertEqual(policy.training_score(rainbow, GameState(current_round=13)), 40)
+
+    def test_ring_amplification_boundary_round_12_inclusive(self) -> None:
+        policy = TrainerPolicy()
+        gold = TrainingChoice("guts", 0, "gold", 0, Rect(0, 0, 10, 10))
+        self.assertEqual(policy.training_score(gold, GameState(current_round=12)), 62.5)
+
+    def test_no_ring_means_no_amplification(self) -> None:
+        policy = TrainerPolicy()
+        plain = TrainingChoice("guts", 0, "none", 0, Rect(0, 0, 10, 10))
+        self.assertEqual(policy.training_score(plain, GameState(current_round=3)), 0)
+
+    def test_ring_amplification_stacks_with_early_stat_weight(self) -> None:
+        # power gets BOTH: ring 40*2.5=100 AND the early stat weight +15.
+        policy = TrainerPolicy()
+        power_rainbow = TrainingChoice("power", 0, "rainbow", 0, Rect(0, 0, 10, 10))
+        self.assertEqual(policy.training_score(power_rainbow, GameState(current_round=3)), 115)
+
 
 if __name__ == "__main__":
     unittest.main()

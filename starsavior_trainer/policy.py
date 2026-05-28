@@ -195,6 +195,9 @@ class PolicyConfig:
     early_game_stat_weight: dict[str, int] = field(
         default_factory=lambda: {"power": 15, "stamina": 15}
     )
+    # Early-game rings matter more (proficiency compounds), so amplify the
+    # ring_bonus inside the early window. 1.0 = no amplification.
+    early_ring_multiplier: float = 2.5
     skill_keywords_by_profile: dict[str, tuple[str, ...]] = field(
         default_factory=lambda: {
             "balanced": ("\u653b\u51fb", "\u96c6\u4e2d", "\u751f\u547d", "\u4fdd\u62a4", "\u6d1e\u5bdf"),
@@ -276,17 +279,21 @@ class TrainerPolicy:
         profile = state.build_profile if state else "balanced"
         strategic_bias = self.config.training_bias_by_profile.get(profile, {}).get(choice.name, 0)
 
-        early_bonus = 0
-        if (
+        is_early_round = (
             state is not None
             and state.current_round is not None
             and state.current_round <= self.config.early_game_rounds
-        ):
+        )
+
+        ring_value = self.config.ring_bonus.get(choice.ring, 0)
+        early_bonus = 0
+        if is_early_round:
+            ring_value *= self.config.early_ring_multiplier
             early_bonus = self.config.early_game_stat_weight.get(choice.name, 0)
 
         return (
             choice.stat_gain
-            + self.config.ring_bonus.get(choice.ring, 0)
+            + ring_value
             - fail_penalty
             + strategic_bias
             + early_bonus
