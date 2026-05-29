@@ -48,6 +48,17 @@ class ShopInspector:
             self.last_selected_index = self.pending_index
             self.pending_index = None
 
+        # 1b) Trading allows only ONE purchase per visit: once we've bought
+        #     something, the remaining rows (incl. duplicate copies the shop
+        #     sometimes rolls) can't be bought anymore. Exit immediately instead of
+        #     re-inspecting for a second item (which would stall on a dead 购买).
+        if self.bought_effects:
+            policy._dday_trading_done = True
+            self.reset()
+            if scene.back_button is not None:
+                return Action("click", scene.back_button, "交易: 已购买1件(每次限购1件), 退出")
+            return Action("skip", None, "交易: 已购买1件, 无返回按钮")
+
         # 2) Inspect any not-yet-seen row by clicking it (selects it -> detail shows
         #    its effect next frame).
         for idx in range(1, n + 1):

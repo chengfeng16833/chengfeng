@@ -480,6 +480,15 @@ def main() -> None:
             # is routed to the focused window. Only when actually executing, so
             # dry-run / diagnosis stays non-invasive.
             if args.execute and action.kind in ("click", "move", "scroll"):
+                # Emergency stop, checked AGAIN right before we move the mouse: the
+                # top-of-loop check can be "beaten" because execute's moveTo yanks
+                # the cursor back to a game target, so a corner-slam during the
+                # (multi-second) OCR phase would be overwritten before the next
+                # top check sees it. Checking here — the last moment before we grab
+                # the mouse — catches a corner-slam from any point in the iteration.
+                if _mouse_at_screen_corner():
+                    print("\n[急停] 鼠标移到屏幕角落，已停止 bot，控制权交还。")
+                    return
                 activate_window(client_window.hwnd)
             result = executor.execute(screen_action)
             logger.info(f"executed: {result.kind} point={result.point} executed={result.executed}")

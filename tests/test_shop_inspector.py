@@ -65,7 +65,11 @@ class ShopInspectorTest(unittest.TestCase):
         self.assertEqual(a.target, _BACK)
         self.assertTrue(policy._dday_trading_done)
 
-    def test_does_not_rebuy_same_effect_after_purchase(self) -> None:
+    def test_buys_one_item_then_exits(self) -> None:
+        # Trading allows only ONE purchase per visit: after buying a worthy item the
+        # other rows (including duplicate copies the shop sometimes rolls) can no
+        # longer be bought, so the inspector must EXIT immediately rather than
+        # re-inspect looking for a second item (which would stall on a dead 购买).
         insp = ShopInspector()
         policy = TrainerPolicy()
 
@@ -75,15 +79,12 @@ class ShopInspectorTest(unittest.TestCase):
         buy = insp.decide(_scene("潜质点数8退还"), policy)  # buy row3
         self.assertEqual(buy.target, _BUY)
 
-        # After the purchase the bot re-inspects. Suppose the bought item is still
-        # listed (or its effect re-read): it must NOT be bought again — eventually
-        # the inspector exits instead of looping on 购买.
-        insp.decide(_scene(), policy)
-        insp.decide(_scene("攻击力+5%"), policy)
-        insp.decide(_scene("攻击力+3%"), policy)
-        after = insp.decide(_scene("潜质点数8退还"), policy)
+        # Next frame: already bought one → exit immediately (do NOT re-inspect /
+        # try to buy a second item).
+        after = insp.decide(_scene(), policy)
         self.assertEqual(after.kind, "click")
         self.assertEqual(after.target, _BACK)
+        self.assertTrue(policy._dday_trading_done)
 
 
 if __name__ == "__main__":
