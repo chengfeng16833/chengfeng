@@ -199,6 +199,26 @@ class ClassifierTest(unittest.TestCase):
         self.assertEqual(screen, Screen.TRAINING_SELECT)
         self.assertGreaterEqual(confidence, 0.70)
 
+    def test_trading_shop_with_training_book_not_misclassified_as_training(self) -> None:
+        # The D-DAY trading shop sells a "保护训练的秘笈" item whose name contains
+        # 保护训练 — only ONE training-card region reads a training name. A real
+        # training screen has all five (力量/体力/韧性/集中/保护训练). Requiring ≥2
+        # stops the shop being mis-read as TRAINING_SELECT (which made the training
+        # inspector loop forever clicking a non-existent training card).
+        from starsavior_trainer.classifier import _has_training_select_signature
+
+        self.assertFalse(
+            _has_training_select_signature({"training_select_card_wisdom": "3024 保护训练的秘笈"})
+        )
+        self.assertTrue(
+            _has_training_select_signature(
+                {
+                    "training_select_card_power": "力量训练 Lv.3",
+                    "training_select_card_stamina": "体力训练 Lv.1",
+                }
+            )
+        )
+
     def test_rest_submenu_signature_wins_over_battle_overlap(self) -> None:
         screen, confidence = _match_screen(
             {

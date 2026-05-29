@@ -663,20 +663,24 @@ def _has_game_menu_signature(anchors: dict[str, str]) -> bool:
 
 
 def _has_training_select_signature(anchors: dict[str, str]) -> bool:
-    card_text = " ".join(
-        anchors.get(f"training_select_card_{attr}", "")
+    # Count how many card slots read a training name. A real training screen has all
+    # five (\u529b\u91cf/\u4f53\u529b/\u97e7\u6027/\u96c6\u4e2d/\u4fdd\u62a4\u8bad\u7ec3); the D-DAY trading shop merely SELLS a
+    # "\u4fdd\u62a4\u8bad\u7ec3\u7684\u79d8\u7b08" item, so at most ONE card slot matches there. Require \u22652 so the
+    # shop (and any stray single-card OCR) isn't mis-read as TRAINING_SELECT \u2014 which
+    # made the training inspector loop forever clicking a non-existent training card.
+    names = (
+        "\u529b\u91cf\u8bad\u7ec3",
+        "\u4f53\u529b\u8bad\u7ec3",
+        "\u97e7\u6027\u8bad\u7ec3",
+        "\u96c6\u4e2d\u8bad\u7ec3",
+        "\u4fdd\u62a4\u8bad\u7ec3",
+    )
+    hits = sum(
+        1
         for attr in ("power", "stamina", "guts", "wisdom", "speed")
+        if contains_any_text(anchors.get(f"training_select_card_{attr}", ""), names)
     )
-    return contains_any_text(
-        card_text,
-        (
-            "\u529b\u91cf\u8bad\u7ec3",
-            "\u4f53\u529b\u8bad\u7ec3",
-            "\u97e7\u6027\u8bad\u7ec3",
-            "\u96c6\u4e2d\u8bad\u7ec3",
-            "\u4fdd\u62a4\u8bad\u7ec3",
-        ),
-    )
+    return hits >= 2
 
 
 # ---------------------------------------------------------------------------
