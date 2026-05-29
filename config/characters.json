@@ -1,11 +1,11 @@
 {
-  "_comment": "角色名册 / character roster. UI 从这里读取可选角色。'name' 必须等于游戏角色选择画面 OCR 清洗后的名字(最右侧 2+ 个汉字), 否则脚本在游戏里匹配不到。规则: 坦克/辅助 跑体力(stamina_tank), 其余职业(突击者/游侠/术师/刺客) 跑力量(power_focus)。'class' 仅作记录, 'profile' 决定实际培养方向。选中角色时 UI 会自动带出 profile。可自由增删/修改。",
+  "_comment": "角色名册 / character roster. UI 从这里读取可选角色。'name' 必须等于游戏角色选择画面 OCR 清洗后的名字(最右侧 2+ 个汉字), 否则脚本在游戏里匹配不到。规则: 坦克/辅助 跑体力(stamina_tank), 其余职业(突击者/游侠/术师/刺客) 跑力量(power_focus)。'class' 仅作记录, 'profile' 决定实际培养方向。选中角色时 UI 会自动带出 profile。'variant' 可选(同名多形态时区分,如游戏里两个同名'卡蜜'): 留空=普通形态, 'ANOTHER'=第二形态, 'COSMIC'=COSMIC系列(图标下方文字)。不填则按名字选到的(优先普通形态,单形态角色也能兜底选到);要精确选某形态用命令行 --variant 或在此填 variant。可自由增删/修改。",
   "_class_rule": { "坦克": "stamina_tank", "辅助": "stamina_tank", "突击者": "power_focus", "游侠": "power_focus", "术师": "power_focus", "刺客": "power_focus" },
   "characters": [
     { "name": "缇莉雅", "class": "突击者", "profile": "power_focus" },
     { "name": "霏", "class": "游侠", "profile": "power_focus" },
     { "name": "凌", "class": "游侠", "profile": "power_focus" },
-    { "name": "罗莎莉亚", "class": "游侠", "profile": "power_focus" },
+    { "name": "罗莎莉亚", "class": "游侠", "profile": "power_focus", "variant": "COSMIC" },
     { "name": "希尔德", "class": "坦克", "profile": "stamina_tank" },
     { "name": "刘米娜", "class": "游侠", "profile": "power_focus" },
     { "name": "萝贝塔", "class": "游侠", "profile": "power_focus" },

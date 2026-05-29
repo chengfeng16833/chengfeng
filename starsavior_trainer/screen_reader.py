@@ -342,21 +342,38 @@ def parse_character_select_bbox(
     lh = (last.y + last.height) - first.y
     list_region = Rect(lx, ly, lw, lh)
 
-    options: list[CharacterOption] = []
-    seen: set[str] = set()
-    for line in ocr.read_lines(crop_region(image, list_region)):
-        name = extract_character_name(line.text)
-        if not name or len(name) < 2 or name in seen:
-            continue  # len<2 drops single-char noise (e.g. '双' from a level badge)
-        seen.add(name)
+    # Two passes over the OCR lines: collect name rows + their click targets, and
+    # collect form-marker tokens (ANOTHER/COSMIC text under each row's class icon).
+    lines = ocr.read_lines(crop_region(image, list_region))
+    name_rows: list[tuple[str, int, Rect]] = []  # (name, y_top, target)
+    variant_tokens: list[tuple[str, int]] = []  # (raw_text, y_top)
+    for line in lines:
         x1, y1, x2, y2 = line.box
-        cx = lx + (x1 + x2) // 2
-        cy = ly + (y1 + y2) // 2
-        target = Rect(max(cx - 90, 0), max(cy - 28, 0), 180, 56)
+        name = extract_character_name(line.text)
+        if name and len(name) >= 2:  # len<2 drops single-char noise (e.g. '双' from a level badge)
+            cx = lx + (x1 + x2) // 2
+            cy = ly + (y1 + y2) // 2
+            target = Rect(max(cx - 90, 0), max(cy - 28, 0), 180, 56)
+            name_rows.append((name, y1, target))
+        elif _normalize_variant(line.text):
+            variant_tokens.append((line.text, y1))
+
+    # Associate each form-marker to the name row directly above it.
+    variants = _match_character_variants([(n, y) for n, y, _t in name_rows], variant_tokens)
+
+    # Dedup by (name, variant): same-named characters now have multiple forms
+    # (普通 / ANOTHER / COSMIC) — keeping only `name` collapsed two 卡蜜 into one.
+    options: list[CharacterOption] = []
+    seen: set[tuple[str, str]] = set()
+    for (name, _y, target), variant in zip(name_rows, variants):
+        key = (name, variant)
+        if key in seen:
+            continue
+        seen.add(key)
         options.append(
             CharacterOption(
                 name=name, rank=None, stars=None, specialty=None,
-                selected=(name == selected_name), target=target,
+                selected=(name == selected_name and not variant), target=target, variant=variant,
             )
         )
 
@@ -380,6 +397,49 @@ def parse_character_select_bbox(
         selected_name=selected_option.name,
         can_scroll=can_scroll,
     )
+
+
+# 同名角色多形态: 每行职业图标下方的形态文字 (普通=无, 第二形态=ANOTHER, 系列=COSMIC)。
+_VARIANT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ANOTHER", ("ANOTHER", "ANOTHE", "NOTHER")),
+    ("COSMIC", ("COSMIC", "COSMI", "OSMIC")),
+)
+
+
+def _normalize_variant(text: str) -> str:
+    """OCR 文本规范化成形态标记 ANOTHER/COSMIC; 认不出返回 ''(普通形态)。
+    容错: 大小写/空格无关, 0↔O 混淆, 以及缺首/尾字母的残读。"""
+    up = "".join(text.upper().split()).replace("0", "O")
+    for canon, keys in _VARIANT_KEYWORDS:
+        if any(k in up for k in keys):
+            return canon
+    return ""
+
+
+def _match_character_variants(
+    names: list[tuple[str, int]],
+    variant_tokens: list[tuple[str, int]],
+    *,
+    gap_min: int = 15,
+    gap_max: int = 70,
+) -> list[str]:
+    """把形态文字关联到正上方的名字行。
+
+    names: [(name, y_top), ...] (名字行顶 y); variant_tokens: [(raw_text, y_top), ...]
+    (无法识别成角色名、但可能是形态文字的 token)。返回与 names 同序的形态标记列表 —
+    名字行正下方 [gap_min, gap_max] 像素内若有可识别的形态文字则取之, 否则 ''(普通)。
+    """
+    out: list[str] = []
+    for _name, ny in names:
+        found = ""
+        for raw, vy in variant_tokens:
+            if gap_min <= vy - ny <= gap_max:
+                canon = _normalize_variant(raw)
+                if canon:
+                    found = canon
+                    break
+        out.append(found)
+    return out
 
 
 def parse_blessing_setup(

@@ -51,6 +51,7 @@ from starsavior_trainer.screen_reader import (
     parse_shop,
     parse_skill_select,
     parse_training_direction,
+    _match_character_variants,
     parse_training_hub,
     parse_training_select,
     looks_like_ocr_region,
@@ -58,6 +59,29 @@ from starsavior_trainer.screen_reader import (
 
 
 class ScreenReaderParserTest(unittest.TestCase):
+    # ---- character variant association (同名2形态) ----
+    def test_match_character_variants_associates_text_below_name(self) -> None:
+        # 形态文字(COSMIC/ANOTHER)在对应名字行正下方 ~38px(实机: 莱希名字 y359, COSMIC y397)。
+        # 普通角色名字下方无形态文字 → ""。
+        names = [("莱希", 359), ("萝贝塔", 505), ("卡蜜", 636), ("卡蜜", 780)]
+        variants = [("COSMIC", 397), ("ANOTHER", 818)]
+        result = _match_character_variants(names, variants)
+        self.assertEqual(result, ["COSMIC", "", "", "ANOTHER"])
+
+    def test_match_character_variants_tolerates_ocr_noise(self) -> None:
+        # OCR 可能把 ANOTHER/COSMIC 读残/读脏, 要容错规范化。
+        names = [("卡蜜", 636)]
+        variants = [("AN0THE", 674)]  # 缺尾字母 + 0/O 混
+        result = _match_character_variants(names, variants)
+        self.assertEqual(result, ["ANOTHER"])
+
+    def test_match_character_variants_ignores_far_text(self) -> None:
+        # 距离过远(不在名字正下方)的文字不关联(避免串行)。
+        names = [("卡蜜", 636)]
+        variants = [("COSMIC", 900)]  # 离 636 太远
+        result = _match_character_variants(names, variants)
+        self.assertEqual(result, [""])
+
     # ---- existing helpers ----
     def test_normalize_ocr_text_handles_common_width_and_case_noise(self) -> None:
         self.assertEqual(normalize_ocr_text("  Fail\uff05  "), "fail%")

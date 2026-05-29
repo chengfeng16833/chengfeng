@@ -165,6 +165,9 @@ class CharacterOption:
     specialty: str | None
     selected: bool
     target: Rect
+    # 形态/系列标记(每行职业图标下方文字): ""=普通, "ANOTHER"=第二形态, "COSMIC"=系列。
+    # 游戏更新后同名角色有多形态, 用它 + 名字一起锁定目标形态。
+    variant: str = ""
 
 
 @dataclass(frozen=True)
@@ -279,6 +282,8 @@ class GameState:
     coins: int = 0
     safe_mode: bool = True
     desired_character: str | None = None
+    # 目标角色的形态(""=普通, "ANOTHER"/"COSMIC"等)。同名多形态时用它锁定正确那个。
+    desired_variant: str = ""
     build_profile: str = "balanced"
     desired_blessing_attribute: str | None = None
     # Current journey round/turn (1-based). None when unknown/not yet read from the

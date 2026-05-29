@@ -182,6 +182,11 @@ def main() -> None:
     parser.add_argument("--verbose", action="store_true", help="Print OCR/color results for each region.")
     parser.add_argument("--character", default=None, help="Desired character name (Chinese), e.g. 克莱儿.")
     parser.add_argument(
+        "--variant",
+        default="",
+        help="角色形态(同名多形态时区分): 留空=普通, ANOTHER=第二形态, COSMIC=系列。例: --variant COSMIC (罗莎莉亚).",
+    )
+    parser.add_argument(
         "--build-profile",
         default="balanced",
         help="Build profile: balanced, power_focus, focus_focus, durability_focus, stamina_tank, protection_focus.",
@@ -200,7 +205,7 @@ def main() -> None:
     blessing_inspector = BlessingChoiceInspector(policy.config.blessing_attribute_by_profile)
     training_inspector = TrainingInspector(max_fail_rate=policy.config.max_training_fail_rate)
     shop_inspector = ShopInspector()
-    state = GameState(desired_character=args.character, build_profile=args.build_profile)
+    state = GameState(desired_character=args.character, desired_variant=args.variant, build_profile=args.build_profile)
     round_tracker = RoundTracker()
     executor = PyAutoGuiExecutor() if args.execute else DryRunExecutor()
     ocr = _create_ocr(args.use_paddle)

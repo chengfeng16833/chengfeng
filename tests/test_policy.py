@@ -156,6 +156,41 @@ class TrainerPolicyTest(unittest.TestCase):
 
         self.assertEqual(action.target, base.target)
 
+    def test_character_select_picks_variant_form_by_desired_variant(self) -> None:
+        # 游戏更新后同名角色有2形态(普通 / ANOTHER), 区别在每行职业图标下方的形态文字。
+        # desired_variant=ANOTHER 时必须选 ANOTHER 那个卡蜜, 不能选普通的。
+        base = CharacterOption("卡蜜", None, None, None, False, Rect(2030, 250, 458, 122), variant="")
+        another = CharacterOption("卡蜜", None, None, None, False, Rect(2030, 394, 458, 122), variant="ANOTHER")
+        selection = CharacterSelect(
+            options=[base, another],
+            confirm_button=Rect(2038, 1305, 448, 75),
+            selected_name=None,
+        )
+
+        action = TrainerPolicy().decide(
+            GameState(desired_character="卡蜜", desired_variant="ANOTHER"),
+            Observation(Screen.CHARACTER_SELECT, 0.95, selection),
+        )
+
+        self.assertEqual(action.target, another.target)
+
+    def test_character_select_picks_base_form_when_no_variant_desired(self) -> None:
+        # desired_variant 为空(默认) → 选普通形态(无形态文字)的那个, 不选 ANOTHER。
+        base = CharacterOption("卡蜜", None, None, None, False, Rect(2030, 250, 458, 122), variant="")
+        another = CharacterOption("卡蜜", None, None, None, False, Rect(2030, 394, 458, 122), variant="ANOTHER")
+        selection = CharacterSelect(
+            options=[another, base],  # ANOTHER 在前, 仍应选 base
+            confirm_button=Rect(2038, 1305, 448, 75),
+            selected_name=None,
+        )
+
+        action = TrainerPolicy().decide(
+            GameState(desired_character="卡蜜"),
+            Observation(Screen.CHARACTER_SELECT, 0.95, selection),
+        )
+
+        self.assertEqual(action.target, base.target)
+
     def test_character_select_scrolls_when_desired_not_visible(self) -> None:
         # List has 7 entries, none match the desired character
         opts = [

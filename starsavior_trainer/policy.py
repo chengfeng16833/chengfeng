@@ -342,16 +342,27 @@ class TrainerPolicy:
 
     def decide_character_select(self, selection: CharacterSelect, state: GameState) -> Action:
         if state.desired_character:
-            # Two passes: prefer an exact name match, then fall back to a tolerant
-            # substring match so noisy OCR (rank prefixes, middle dots, costume
-            # prefixes) still resolves the right character.
-            match = next(
-                (opt for opt in selection.options if opt.name == state.desired_character),
-                None,
-            ) or next(
-                (opt for opt in selection.options if _character_name_matches(opt.name, state.desired_character)),
-                None,
+            # Same-named characters now have multiple forms (普通 / ANOTHER / COSMIC),
+            # told apart by the variant text under each row's class icon. Rank the
+            # name-matching options by (exact-name first, then variant-match) and take
+            # the best. So: a requested variant wins when present; with no variant
+            # requested the plain form is preferred; but a single-form character whose
+            # only form carries a COSMIC/ANOTHER tag is still selectable (fallback to
+            # any variant) instead of being un-matchable.
+            desired_variant = state.desired_variant or ""
+            candidates = [
+                opt
+                for opt in selection.options
+                if opt.name == state.desired_character
+                or _character_name_matches(opt.name, state.desired_character)
+            ]
+            candidates.sort(
+                key=lambda o: (
+                    0 if o.name == state.desired_character else 1,  # exact name before substring
+                    0 if (o.variant or "") == desired_variant else 1,  # then variant match
+                )
             )
+            match = candidates[0] if candidates else None
             if match is not None:
                 self._reset_character_scroll()
                 # Confirm if the game shows her selected, OR if we already clicked
