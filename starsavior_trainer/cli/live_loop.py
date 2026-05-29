@@ -31,7 +31,6 @@ from starsavior_trainer.classifier import (
     classify_journey_origin_by_visual,
     journey_origin_visual_scores,
 )
-from starsavior_trainer.blessing_inspector import BlessingChoiceInspector
 from starsavior_trainer.training_inspector import TrainingInspector
 from starsavior_trainer.shop_inspector import ShopInspector
 from starsavior_trainer.round_tracker import RoundTracker
@@ -202,7 +201,6 @@ def main() -> None:
     base_profile = load_region_profile(args.profile)
     profile = base_profile
     policy = TrainerPolicy()
-    blessing_inspector = BlessingChoiceInspector(policy.config.blessing_attribute_by_profile)
     training_inspector = TrainingInspector(max_fail_rate=policy.config.max_training_fail_rate)
     shop_inspector = ShopInspector()
     state = GameState(desired_character=args.character, desired_variant=args.variant, build_profile=args.build_profile)
@@ -343,15 +341,10 @@ def main() -> None:
 
             # Decide
             action = None
-            if observation.screen == Screen.BLESSING_CHOICE and isinstance(observation.payload, BlessingChoice):
-                action = blessing_inspector.decide(observation.payload, state)
-                if action is not None:
-                    print(
-                        f"  blessing_inspector_records={blessing_inspector.records} "
-                        f"pending={blessing_inspector.pending_name}"
-                    )
-            elif observation.screen != Screen.BLESSING_CHOICE:
-                blessing_inspector.reset()
+            # BLESSING_CHOICE goes through the policy (decide_blessing_choice): pick the
+            # highest-value blessing, same-value → topmost, two-step confirm. The old
+            # click-to-read-sub inspector looped in-game (sub count flickers, candidate
+            # list OCR jitters), so it's retired — see 协作守则 / commit.
             # Training: heads are random each turn, so inspect 力量/体力/韧性 (click
             # each to reveal its +N gain) and pick whichever gives the most — a
             # fixed bias can't know this turn's best. Mirrors the blessing inspector.

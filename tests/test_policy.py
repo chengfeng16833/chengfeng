@@ -191,6 +191,34 @@ class TrainerPolicyTest(unittest.TestCase):
 
         self.assertEqual(action.target, base.target)
 
+    def test_blessing_choice_two_step_confirm_for_same_value(self) -> None:
+        # 多个同值(35)体力祝福: 第1帧选靠上第一个(选中), 第2帧两步防抖确认 —— 不能依赖
+        # selected_name(同值卡 OCR 分不清, 会永不确认→死循环)。
+        policy = TrainerPolicy()
+        st = GameState(build_profile="stamina_tank")
+        confirm = Rect(300, 300, 80, 40)
+        top = BlessingOption("s35_top", "stamina", 35, Rect(10, 10, 20, 20))
+        bot = BlessingOption("s35_bot", "stamina", 35, Rect(10, 300, 20, 20))
+        choice = BlessingChoice([top, bot], confirm_button=confirm)
+        a1 = policy.decide(st, Observation(Screen.BLESSING_CHOICE, 1.0, choice))
+        self.assertEqual(a1.kind, "click")
+        self.assertEqual(a1.target, top.target)  # 选靠上第一个
+        a2 = policy.decide(st, Observation(Screen.BLESSING_CHOICE, 1.0, choice))
+        self.assertEqual(a2.target, confirm)  # 第2帧确认(防抖)
+
+    def test_blessing_choice_confirms_despite_candidate_flicker(self) -> None:
+        # 候选数帧间抖动(同值卡时有时无)不应死循环: 选中后下帧即使候选变了也确认。
+        policy = TrainerPolicy()
+        st = GameState(build_profile="stamina_tank")
+        confirm = Rect(300, 300, 80, 40)
+        top = BlessingOption("s35_top", "stamina", 35, Rect(10, 10, 20, 20))
+        bot = BlessingOption("s35_bot", "stamina", 35, Rect(10, 300, 20, 20))
+        full = BlessingChoice([top, bot], confirm_button=confirm)
+        flick = BlessingChoice([bot], confirm_button=confirm)  # top 抖动消失
+        policy.decide(st, Observation(Screen.BLESSING_CHOICE, 1.0, full))  # 选 top, 记 pending
+        a2 = policy.decide(st, Observation(Screen.BLESSING_CHOICE, 1.0, flick))
+        self.assertEqual(a2.target, confirm)  # 候选抖动, 仍两步确认
+
     def test_character_select_scrolls_when_desired_not_visible(self) -> None:
         # List has 7 entries, none match the desired character
         opts = [
@@ -728,10 +756,12 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertIn("power", action.reason)
         self.assertIn("50", action.reason)
 
-    def test_blessing_tie_break_prefers_sub_blessing(self) -> None:
+    def test_blessing_tie_break_ignores_sub_blessing_picks_topmost(self) -> None:
+        # sub-blessing 数 OCR 不可靠(实机在帧间 0/2 跳, 还导致死循环)→ 不按它 tiebreak;
+        # 同值祝福价值相同, 按位置选靠上第一个(稳定)即可。
         choice = BlessingChoice(
             options=[
-                BlessingOption("power_50_plain", "power", 50, Rect(10, 10, 20, 20)),
+                BlessingOption("power_50_top", "power", 50, Rect(10, 10, 20, 20)),
                 BlessingOption("power_50_with_sub", "power", 50, Rect(40, 40, 20, 20), 1, ("attack_sense",)),
             ]
         )
@@ -742,8 +772,7 @@ class TrainerPolicyTest(unittest.TestCase):
         )
 
         self.assertEqual(action.kind, "click")
-        self.assertEqual(action.target, choice.options[1].target)
-        self.assertIn("sub_blessings=1", action.reason)
+        self.assertEqual(action.target, choice.options[0].target)  # 靠上(y=10), 忽略 sub
 
     def test_blessing_tie_break_prefers_earlier_card_when_sub_blessings_are_unknown(self) -> None:
         choice = BlessingChoice(

@@ -259,6 +259,10 @@ class TrainerPolicy:
         # set for the fixed initial relic), so it re-picked each frame and flipped
         # between near-scored cards — the back-and-forth oscillation.
         self._pending_relic: Rect | None = None
+        # Same two-step confirm for blessing choice: equal-value cards can't be told
+        # apart by selected_name (OCR), so confirming on selected_name==best never
+        # fires → loop. Remember the card we clicked; next frame click 确认 directly.
+        self._pending_blessing: Rect | None = None
         # Set when we bail out of TRAINING_SELECT because every option's fail rate
         # is too high; the next TRAINING_HUB decision consumes it to go rest.
         self._needs_rest: bool = False
@@ -289,6 +293,8 @@ class TrainerPolicy:
         # Forget any half-finished relic pick once we leave the relic screen.
         if observation.screen != Screen.RELIC_CHOICE:
             self._pending_relic = None
+        if observation.screen != Screen.BLESSING_CHOICE:
+            self._pending_blessing = None
 
         # Dispatch through the screen registry instead of a hardcoded if/elif
         # chain. Each handler.decide is a verbatim copy of the branch that used
@@ -421,33 +427,35 @@ class TrainerPolicy:
         return Action("pause", None, "all blessing slots filled but confirm is disabled")
 
     def decide_blessing_choice(self, choice: BlessingChoice, state: GameState) -> Action:
+        # Two-step confirm: we clicked a blessing last frame — confirm it now instead
+        # of re-picking. Same-value cards are indistinguishable by selected_name (OCR),
+        # and the sub-blessing count flickers frame-to-frame, so the old "confirm when
+        # selected_name==best" never fired reliably and looped. Lock the first pick.
+        if self._pending_blessing is not None and choice.confirm_button is not None:
+            target = self._pending_blessing
+            self._pending_blessing = None
+            return Action("click", target, "confirm chosen blessing")
+
         attribute = state.desired_blessing_attribute or self.config.blessing_attribute_by_profile.get(state.build_profile, "power")
         matching = [option for option in choice.options if option.attribute == attribute and option.value is not None]
         if not matching:
             return Action("pause", None, f"no {attribute} blessing option with recognized value")
 
+        # Highest value wins; ties broken by position (topmost-leftmost) — NOT by
+        # sub-blessing count, which OCR can't read reliably (equal-value cards are
+        # near-identical in worth, so any consistent tiebreak avoids the flicker loop).
         best = max(matching, key=self.blessing_score)
-        if choice.selected_name == best.name and choice.confirm_button is not None:
-            return Action(
-                "click",
-                choice.confirm_button,
-                f"confirm selected {attribute} blessing: {best.name}={best.value}, sub_blessings={best.sub_blessing_count}",
-            )
-        if best.value == self.config.max_blessing_value:
-            return Action(
-                "click",
-                best.target,
-                f"choose max {attribute} blessing: {best.name}={best.value}, sub_blessings={best.sub_blessing_count}",
-            )
+        if choice.confirm_button is not None:
+            self._pending_blessing = choice.confirm_button
         return Action(
             "click",
             best.target,
-            f"choose best {attribute} blessing: {best.name}={best.value}, sub_blessings={best.sub_blessing_count}",
+            f"choose {attribute} blessing: {best.name}={best.value}",
         )
 
-    def blessing_score(self, option: BlessingOption) -> tuple[int, int, str]:
+    def blessing_score(self, option: BlessingOption) -> tuple[int, int, int, str]:
         value = option.value if option.value is not None else -1
-        return (value, option.sub_blessing_count, -option.target.y, -option.target.x, option.name)
+        return (value, -option.target.y, -option.target.x, option.name)
 
     def decide_journey_start(self, journey: JourneyStart) -> Action:
         return Action("click", journey.start_button, "arcana is fixed, click journey start")
