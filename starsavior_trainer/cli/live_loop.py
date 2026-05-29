@@ -427,6 +427,15 @@ def main() -> None:
         print("\nstopped by user")
     except RuntimeError as exc:
         print(f"\nerror: {exc}")
+    except Exception as exc:
+        # pyautogui FAILSAFE: operator slammed the mouse into a screen corner to
+        # abort. This is the reliable "reclaim control" path (the keyboard hotkey
+        # can be swallowed by a focused admin/Steam window). Exit cleanly instead
+        # of dumping a traceback.
+        if type(exc).__name__ == "FailSafeException":
+            print("\n[FAILSAFE] 鼠标移到屏幕角落，已紧急停止 bot。控制权交还。")
+            return
+        raise
 
 
 # ---------------------------------------------------------------------------

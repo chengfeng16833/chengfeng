@@ -75,6 +75,29 @@ class ExecutorTest(unittest.TestCase):
         self.assertTrue(result.executed)
         self.assertEqual(fake.clicks, 4)
 
+    def test_enables_failsafe_corners_for_emergency_stop(self) -> None:
+        # Slamming the mouse into a screen corner must abort the bot. This is the
+        # ONLY reliable "reclaim control" path: the F9/F12 keyboard hotkey uses a
+        # global keyboard hook that a low-privilege python can't receive while a
+        # higher-privilege (e.g. admin/Steam) game window is focused. pyautogui's
+        # FAILSAFE is pure cursor-position polling inside our own process, so it
+        # works regardless of window focus or privilege. Arm all four corners so
+        # any corner the operator reaches for triggers it.
+        fake = types.SimpleNamespace(
+            moveTo=lambda *a, **k: None,
+            click=lambda: None,
+            size=lambda: (2560, 1440),
+        )
+        sys.modules["pyautogui"] = fake  # type: ignore[assignment]
+        try:
+            PyAutoGuiExecutor()
+        finally:
+            del sys.modules["pyautogui"]
+
+        self.assertIs(fake.FAILSAFE, True)
+        for corner in [(0, 0), (2559, 0), (0, 1439), (2559, 1439)]:
+            self.assertIn(corner, fake.FAILSAFE_POINTS)
+
 
 if __name__ == "__main__":
     unittest.main()

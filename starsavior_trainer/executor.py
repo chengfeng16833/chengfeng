@@ -40,6 +40,26 @@ class PyAutoGuiExecutor:
         self._pyautogui = pyautogui
         self._move_duration = move_duration
 
+        # Emergency stop: slam the mouse into ANY screen corner to abort the bot.
+        # This is the only "reclaim control" path that survives a focused,
+        # higher-privilege game window — the F9/F12 keyboard hotkey relies on a
+        # global keyboard hook that a low-privilege python can't receive while an
+        # admin/Steam window has focus. FAILSAFE is pure cursor-position polling
+        # inside our own process, so it fires regardless of focus or privilege.
+        pyautogui.FAILSAFE = True
+        try:
+            width, height = pyautogui.size()
+            pyautogui.FAILSAFE_POINTS = [
+                (0, 0),
+                (width - 1, 0),
+                (0, height - 1),
+                (width - 1, height - 1),
+            ]
+        except Exception:
+            # size() can fail on a headless host — keep pyautogui's default
+            # top-left (0, 0) failsafe point rather than crash.
+            pass
+
     def execute(self, action: Action) -> ExecutionResult:
         if action.kind not in ("click", "move", "scroll"):
             return ExecutionResult(False, action.kind, None, f"not executable action: {action.reason}")
