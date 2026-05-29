@@ -349,6 +349,10 @@
 
     "region_move_button": [1750, 800, 650, 200],
     "region_move_button_text": [1770, 830, 610, 80],
+    "region_move_anchor_title": [247, 60, 175, 55],
+    "region_move_station_title": [1920, 172, 205, 64],
+    "region_move_destination_1": [1950, 370, 150, 56],
+    "region_move_go_button": [2150, 1262, 160, 58],
 
     "battle_title": [330, 66, 290, 60],
     "battle_skip_button": [2350, 55, 145, 60],

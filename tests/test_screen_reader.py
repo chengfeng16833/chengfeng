@@ -669,6 +669,36 @@ class ScreenReaderParserTest(unittest.TestCase):
         rect = parse_region_move(texts, profile)
         self.assertIsNone(rect)
 
+    def _region_move_train_fixture(self, has_go: bool = False) -> tuple[RegionProfile, list[RegionText]]:
+        """列车月台 region-move: 地区移动+列车月台 anchors; a destination row (阿卡农);
+        the 前往 (go) button only present once a destination is selected."""
+        regions = {
+            "region_move_anchor_title": Rect(247, 60, 175, 55),
+            "region_move_station_title": Rect(1920, 172, 205, 64),
+            "region_move_destination_1": Rect(1950, 370, 150, 56),
+            "region_move_go_button": Rect(2150, 1262, 160, 58),
+        }
+        profile = RegionProfile("test", (2560, 1440), regions)
+        texts = [
+            RegionText("region_move_anchor_title", "地区移动", 0.9),
+            RegionText("region_move_station_title", "列车月台", 0.9),
+        ]
+        if has_go:
+            texts.append(RegionText("region_move_go_button", "前往", 0.9))
+        return profile, texts
+
+    def test_parse_region_move_train_station_selects_destination_first(self) -> None:
+        # No 前往 button yet (no destination chosen) → click the destination row.
+        profile, texts = self._region_move_train_fixture(has_go=False)
+        rect = parse_region_move(texts, profile)
+        self.assertEqual(rect, Rect(1950, 370, 150, 56))
+
+    def test_parse_region_move_train_station_clicks_go_when_selected(self) -> None:
+        # 前往 button present (a destination is selected) → click 前往 to travel.
+        profile, texts = self._region_move_train_fixture(has_go=True)
+        rect = parse_region_move(texts, profile)
+        self.assertEqual(rect, Rect(2150, 1262, 160, 58))
+
     # ---- post training ----
     def test_parse_post_training_reads_result(self) -> None:
         profile, texts = _post_training_fixture()

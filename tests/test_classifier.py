@@ -219,6 +219,20 @@ class ClassifierTest(unittest.TestCase):
             )
         )
 
+    def test_train_station_classifies_as_region_move(self) -> None:
+        # The 列车月台 region-move screen (地区移动 + 列车月台) was mis-scored as
+        # relic_choice by the fallback and got stuck. Its two anchors uniquely
+        # identify REGION_MOVE so the bot can pick a destination and travel.
+        screen, confidence = _match_screen(
+            {
+                "region_move_anchor_title": "地区移动",
+                "region_move_station_title": "列车月台",
+            }
+        )
+
+        self.assertEqual(screen, Screen.REGION_MOVE)
+        self.assertGreaterEqual(confidence, 0.70)
+
     def test_rest_submenu_signature_wins_over_battle_overlap(self) -> None:
         screen, confidence = _match_screen(
             {

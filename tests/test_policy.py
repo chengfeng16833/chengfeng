@@ -396,6 +396,16 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertNotEqual(action.kind, "pause")
         self.assertIn("rest", action.reason)
 
+    def test_region_move_clicks_parsed_target(self) -> None:
+        # REGION_MOVE must click the target the parser found (destination row, or the
+        # 前往 button) — NOT a fixed config.move_button (the old bug clicked a
+        # hardcoded centre point that hit the character art and stalled).
+        policy = TrainerPolicy()
+        target = Rect(1950, 370, 150, 56)
+        action = policy.decide(GameState(), Observation(Screen.REGION_MOVE, 1.0, target))
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, target)
+
     def test_game_menu_closes_via_x_button(self) -> None:
         # On the accidental 菜单 popup the bot must click ✕ to close — NOT the
         # generic centre-click advance (the centre holds 重新观测/观测结束, which

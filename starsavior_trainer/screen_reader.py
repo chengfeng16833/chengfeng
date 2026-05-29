@@ -1237,15 +1237,35 @@ def parse_region_move(
     region_texts: Iterable[RegionText],
     profile: RegionProfile,
 ) -> Rect | None:
-    """Detect the region-move screen and return the move button rect."""
+    """Detect the region-move screen and return the rect to click next.
+
+    The real \u5217\u8f66\u6708\u53f0 (train-station) region-move is a two-step flow: a destination
+    list (e.g. \u963f\u5361\u519c) on the right; clicking a destination shows its detail card and
+    a \u524d\u5f80 (go) button at the bottom-right; \u524d\u5f80 travels there. So:
+      - \u524d\u5f80 present  \u2192 return the \u524d\u5f80 button (a destination is selected \u2192 travel).
+      - otherwise     \u2192 return the first destination row (select it first).
+    Falls back to the older single \u79fb\u52a8-button screen for backward compatibility.
+    """
     texts = {item.name: item.text for item in region_texts}
 
-    move_rect = profile.regions.get("region_move_button")
-    if move_rect is None:
+    # \u5217\u8f66\u6708\u53f0 region-move (anchors: \u5730\u533a\u79fb\u52a8 + \u5217\u8f66\u6708\u53f0).
+    anchor = texts.get("region_move_anchor_title", "")
+    station = texts.get("region_move_station_title", "")
+    if contains_any_text(anchor, ("\u5730\u533a\u79fb\u52a8", "\u533a\u79fb\u52a8", "\u5730\u533a")) and contains_any_text(
+        station, ("\u5217\u8f66\u6708\u53f0", "\u8f66\u6708\u53f0", "\u6708\u53f0")
+    ):
+        if contains_any_text(texts.get("region_move_go_button", ""), ("\u524d\u5f80", "\u51fa\u53d1", "\u524d\u4f4f")):
+            go = profile.regions.get("region_move_go_button")
+            if go is not None:
+                return go
+        dest = profile.regions.get("region_move_destination_1")
+        if dest is not None:
+            return dest
         return None
 
-    button_text = texts.get("region_move_button_text", "")
-    if contains_any_text(button_text, ("\u79fb\u52a8", "move")):
+    # Backward-compat: older single \u79fb\u52a8-button region-move screen.
+    move_rect = profile.regions.get("region_move_button")
+    if move_rect is not None and contains_any_text(texts.get("region_move_button_text", ""), ("\u79fb\u52a8", "move")):
         return move_rect
 
     return None

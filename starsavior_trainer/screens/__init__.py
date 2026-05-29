@@ -23,6 +23,7 @@ from starsavior_trainer.classifier import (
     _has_event_choice_signature,
     _has_game_menu_signature,
     _has_initial_signature,
+    _has_region_move_signature,
     _has_post_training_signature,
     _has_rest_submenu_signature,
     _has_reward_signature,
@@ -42,6 +43,7 @@ from starsavior_trainer.models import (
     EventFastForwardSetting,
     EventOption,
     JourneyStart,
+    Rect,
     RelicChoice,
     RelicOption,
     RestSubmenu,
@@ -224,7 +226,12 @@ def _decide_post_training(obs, state, policy):
 
 
 def _decide_region_move(obs, state, policy):
-    return Action("click", policy.config.move_button, "region move screen, click move")
+    # Click the target the parser found: a destination row (列车月台 → 选目的地) or
+    # the 前往 button once a destination is selected. The old code clicked a fixed
+    # config.move_button that hit the character art and stalled.
+    if not isinstance(obs.payload, Rect):
+        return Action("pause", None, "region move screen, no target parsed")
+    return Action("click", obs.payload, "region move: 选目的地/前往")
 
 
 def _decide_game_menu(obs, state, policy):
@@ -361,7 +368,10 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         parse_fn=parse_skill_select, ocr_prefixes=["skill_select"],
     ),
     Screen.REGION_MOVE: DelegatingScreenHandler(
-        Screen.REGION_MOVE, _decide_region_move,
+        Screen.REGION_MOVE, _decide_region_move, priority=6,
+        # 列车月台 region-move needs a signature (地区移动 + 列车月台) so it pre-empts
+        # the relic_choice fallback that otherwise mis-scored it and stalled.
+        anchor_fn=_has_region_move_signature, anchor_confidence=1.0,
         parse_fn=parse_region_move, ocr_prefixes=["region_move"],
     ),
     # 获得奖励 reward popup. Priority 2 (before DIALOGUE=4) so its unique centre

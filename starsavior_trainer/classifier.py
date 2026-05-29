@@ -47,6 +47,10 @@ _FAST_ANCHORS: tuple[str, ...] = (
     # instead of leaving it UNKNOWN and centre-clicking onto a dangerous menu item.
     "game_menu_anchor_title",
     "game_menu_observe_marker",
+    # 列车月台 region-move: read its 地区移动 + 列车月台 anchors in the fast pass so it's
+    # recognised as REGION_MOVE instead of falling through to a relic_choice misscore.
+    "region_move_anchor_title",
+    "region_move_station_title",
 )
 
 
@@ -647,6 +651,18 @@ def _has_reward_signature(anchors: dict[str, str]) -> bool:
     # otherwise mis-scores this screen and stalls the character-scroll loop).
     title = anchors.get("reward_title", "")
     return contains_any_text(title, ("获得奖励", "获得", "奖励"))
+
+
+def _has_region_move_signature(anchors: dict[str, str]) -> bool:
+    # 列车月台 region-move screen: identified by its 地区移动 (top-left) + 列车月台
+    # (right) titles together. Both required so a stray 月台/地区 elsewhere can't
+    # false-trigger. Pre-empts the relic_choice fallback that otherwise mis-scored
+    # this screen and left the bot centre-clicking onto the character art forever.
+    anchor = anchors.get("region_move_anchor_title", "")
+    station = anchors.get("region_move_station_title", "")
+    return contains_any_text(anchor, ("地区移动", "区移动")) and contains_any_text(
+        station, ("列车月台", "车月台", "月台")
+    )
 
 
 def _has_game_menu_signature(anchors: dict[str, str]) -> bool:
