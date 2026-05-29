@@ -21,6 +21,7 @@ from starsavior_trainer.classifier import (
     _has_commission_select_signature,
     _has_dialogue_signature,
     _has_event_choice_signature,
+    _has_game_menu_signature,
     _has_initial_signature,
     _has_post_training_signature,
     _has_rest_submenu_signature,
@@ -226,6 +227,17 @@ def _decide_region_move(obs, state, policy):
     return Action("click", policy.config.move_button, "region move screen, click move")
 
 
+def _decide_game_menu(obs, state, policy):
+    # Accidental 菜单 popup: click ✕ to close and return to the underlying screen.
+    # Never the generic centre-click advance — the centre holds 重新观测/观测结束,
+    # which would restart or end the run.
+    return Action(
+        "click",
+        policy.config.game_menu_close_button,
+        "game menu popup, click ✕ to close (avoid centre 重新观测/观测结束)",
+    )
+
+
 def _decide_reward(obs, state, policy):
     # 获得奖励 popup: the centre relic card is a dead click zone — only the
     # "点击以继续" prompt advances. Click it; the live loop re-captures quickly
@@ -358,6 +370,15 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
     Screen.REWARD: DelegatingScreenHandler(
         Screen.REWARD, _decide_reward, priority=2,
         anchor_fn=_has_reward_signature, anchor_confidence=1.0,
+        parse_fn=None, ocr_prefixes=None,
+    ),
+    # Accidental 菜单 popup. Priority 2 (checked early) so it pre-empts any
+    # background screen whose anchors are still partly visible behind the dialog.
+    # Its 菜单-title + 观测-row signature is unique, so it never steals a normal
+    # screen. No parse_fn — the policy clicks the fixed ✕ close button.
+    Screen.GAME_MENU: DelegatingScreenHandler(
+        Screen.GAME_MENU, _decide_game_menu, priority=2,
+        anchor_fn=_has_game_menu_signature, anchor_confidence=1.0,
         parse_fn=None, ocr_prefixes=None,
     ),
 }

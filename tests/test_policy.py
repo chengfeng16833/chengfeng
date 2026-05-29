@@ -396,6 +396,15 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertNotEqual(action.kind, "pause")
         self.assertIn("rest", action.reason)
 
+    def test_game_menu_closes_via_x_button(self) -> None:
+        # On the accidental 菜单 popup the bot must click ✕ to close — NOT the
+        # generic centre-click advance (the centre holds 重新观测/观测结束, which
+        # would restart or end the run).
+        policy = TrainerPolicy()
+        action = policy.decide(GameState(), Observation(Screen.GAME_MENU, 1.0, None))
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, policy.config.game_menu_close_button)
+
     def test_training_score_excludes_unknown_fail_rate(self) -> None:
         # A card whose 失败率 is not shown on screen (it isn't the selected card)
         # has an UNKNOWN fail rate, encoded as None — never 0. Scoring it must

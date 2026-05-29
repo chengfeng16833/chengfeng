@@ -250,6 +250,9 @@ class PolicyConfig:
     # 屏幕中心: 用于推进"被误判成 relic_choice 的奖励/结果展示"(委托 SUCCESS、评鉴战
     # 奖励纯展示、阿尔克那等点任意处继续的全屏展示), 避免它们 parse 不出选项时 pause 卡死。
     screen_center: Rect = Rect(1180, 660, 200, 120)
+    # 误触弹出的游戏「菜单」弹窗右上角 ✕ 关闭按钮。识别到菜单就点它关闭(自愈), 绝不点
+    # 菜单中部的 重新观测/观测结束(会重开/结束本局)。坐标取自真帧 OCR 的 X 块中心。
+    game_menu_close_button: Rect = Rect(1808, 535, 64, 60)
 
 
 class TrainerPolicy:

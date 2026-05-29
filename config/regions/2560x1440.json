@@ -191,6 +191,10 @@
 
     "reward_title": [1140, 325, 300, 95],
 
+    "game_menu_anchor_title": [730, 535, 175, 62],
+    "game_menu_observe_marker": [1290, 808, 365, 62],
+    "game_menu_close_button": [1808, 535, 64, 60],
+
     "training_hub_anchor_title": [330, 66, 290, 60],
     "training_hub_distance": [46, 54, 255, 135],
     "training_hub_turn_label": [300, 124, 330, 64],

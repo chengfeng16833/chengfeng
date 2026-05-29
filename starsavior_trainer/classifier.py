@@ -42,6 +42,11 @@ _FAST_ANCHORS: tuple[str, ...] = (
     # 54-region sweep (which left it UNKNOWN at ~3.6s/frame).
     "dialogue_intro_skip_button",
     "reward_title",
+    # Accidental in-game 菜单 popup: its top-left 菜单 title + centre 观测 menu
+    # items are read in the fast pass so we recognise it and close it (click ✕)
+    # instead of leaving it UNKNOWN and centre-clicking onto a dangerous menu item.
+    "game_menu_anchor_title",
+    "game_menu_observe_marker",
 )
 
 
@@ -642,6 +647,19 @@ def _has_reward_signature(anchors: dict[str, str]) -> bool:
     # otherwise mis-scores this screen and stalls the character-scroll loop).
     title = anchors.get("reward_title", "")
     return contains_any_text(title, ("获得奖励", "获得", "奖励"))
+
+
+def _has_game_menu_signature(anchors: dict[str, str]) -> bool:
+    # The accidental in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后
+    # 前往大厅 + ✕). Identify it by its top-left 菜单 title AND the 观测 menu items in
+    # the centre row. Both are required: the bare word 菜单 can appear elsewhere, but
+    # 菜单-title + 观测-row together are unique to this popup, so we never
+    # false-positive a normal screen into "close the menu".
+    title = anchors.get("game_menu_anchor_title", "")
+    observe = anchors.get("game_menu_observe_marker", "")
+    return contains_any_text(title, ("菜单", "菜車", "茶单")) and contains_any_text(
+        observe, ("观测", "重新观测", "观测结束", "观测信息")
+    )
 
 
 def _has_training_select_signature(anchors: dict[str, str]) -> bool:

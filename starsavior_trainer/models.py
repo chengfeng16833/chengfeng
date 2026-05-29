@@ -27,6 +27,12 @@ class Screen(str, Enum):
     # "获得奖励" reward-obtained popup (a fixed relic is granted, no choice). The
     # centre card is a dead click zone; only the "点击以继续" prompt advances it.
     REWARD = "reward"
+    # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
+    # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
+    # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or
+    # end the run if clicked — so we must recognise it and click ✕ to close, never
+    # the generic "click centre to advance" fallback.
+    GAME_MENU = "game_menu"
     UNKNOWN = "unknown"
 
 

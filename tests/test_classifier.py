@@ -32,6 +32,34 @@ class ClassifierTest(unittest.TestCase):
         self.assertEqual(screen, Screen.REWARD)
         self.assertGreaterEqual(confidence, 0.70)
 
+    def test_game_menu_popup_classifies_as_game_menu(self) -> None:
+        # The accidental in-game 菜单 popup. Its top-left 菜单 title + centre 观测
+        # menu items uniquely identify it, so the bot can click ✕ to close instead
+        # of falling to "unknown → click centre" (which would hit 重新观测/观测结束
+        # in the centre and restart or end the run).
+        screen, confidence = _match_screen(
+            {
+                "game_menu_anchor_title": "菜单",
+                "game_menu_observe_marker": "观测结束 重新观测",
+            }
+        )
+
+        self.assertEqual(screen, Screen.GAME_MENU)
+        self.assertGreaterEqual(confidence, 0.70)
+
+    def test_game_menu_signature_needs_both_title_and_observe_marker(self) -> None:
+        # Just the word 菜单 (other screens may show it) must NOT trigger the menu
+        # screen — the 观测 menu-item marker is required so we don't false-positive.
+        from starsavior_trainer.classifier import _has_game_menu_signature
+
+        self.assertTrue(
+            _has_game_menu_signature(
+                {"game_menu_anchor_title": "菜单", "game_menu_observe_marker": "重新观测"}
+            )
+        )
+        self.assertFalse(_has_game_menu_signature({"game_menu_anchor_title": "菜单"}))
+        self.assertFalse(_has_game_menu_signature({}))
+
     def test_reward_signature_wins_over_character_select_旅程起点_overlap(self) -> None:
         # The 获得奖励 popup lands over the journey map, whose top-left can still
         # OCR as 旅程起点 (the character_select anchor text). Without the reward
