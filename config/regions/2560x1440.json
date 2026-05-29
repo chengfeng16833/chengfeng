@@ -186,6 +186,7 @@
     "relic_choice_card_2_description": [1085, 675, 360, 170],
     "relic_choice_card_3_description": [1638, 675, 360, 170],
     "relic_choice_confirm_button": [1080, 1158, 400, 82],
+    "relic_choice_grid_cell_1": [580, 530, 140, 120],
 
     "reward_title": [1140, 325, 300, 95],
 

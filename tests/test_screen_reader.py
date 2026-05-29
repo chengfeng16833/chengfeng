@@ -82,6 +82,27 @@ class ScreenReaderParserTest(unittest.TestCase):
         result = _match_character_variants(names, variants)
         self.assertEqual(result, [""])
 
+    # ---- relic choice: 背包 grid 变体 ----
+    def test_parse_relic_choice_grid_variant_picks_held_item(self) -> None:
+        # 开局/奖励的"选择奖励"有时是背包 grid(从持有道具选), 不是3卡横排。card_1 区读到
+        # "背包/持有道具" → 选 grid 第一格(选中/NEW那个)道具, 复用两步点"选择完成"确认。
+        grid_cell = Rect(580, 530, 140, 120)
+        done = Rect(1180, 1170, 200, 60)
+        profile = RegionProfile(
+            "test",
+            (2560, 1440),
+            {"relic_choice_grid_cell_1": grid_cell, "relic_choice_confirm_button": done},
+        )
+        texts = [
+            RegionText("relic_choice_title", "选择奖励", 0.99),
+            RegionText("relic_choice_card_1", "背包 NEW 持有道具 1/30", 1.0),
+            RegionText("relic_choice_confirm_button", "选择完成", 0.9),
+        ]
+        scene = parse_relic_choice(texts, profile)
+        self.assertIsNotNone(scene)
+        self.assertEqual([o.target for o in scene.options], [grid_cell])
+        self.assertEqual(scene.confirm_button, done)
+
     # ---- existing helpers ----
     def test_normalize_ocr_text_handles_common_width_and_case_noise(self) -> None:
         self.assertEqual(normalize_ocr_text("  Fail\uff05  "), "fail%")

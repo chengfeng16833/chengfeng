@@ -744,6 +744,19 @@ def parse_relic_choice(
             ))
 
     if not options:
+        # 3-card parse found nothing → this "选择奖励" is the inventory-GRID variant
+        # (pick a relic from 持有道具, not a 3-card row). We can't read the "持有道具"
+        # label to detect it — that panel region (relic_choice_card_1) is larger than
+        # the live loop's OCR max_area and gets skipped — so "no cards parsed on a relic
+        # screen" IS the grid signal. Select the first/topmost (NEW/selected) item and
+        # confirm via 选择完成, reusing the two-step _pending_relic confirm.
+        grid_cell = profile.regions.get("relic_choice_grid_cell_1")
+        confirm = profile.regions.get("relic_choice_confirm_button")
+        if grid_cell is not None and confirm is not None:
+            return RelicChoice(
+                options=[RelicOption(name="held_item_1", score=0, target=grid_cell)],
+                confirm_button=confirm,
+            )
         return None
 
     fixed_name = "annoying_cuckoo_clock" if _is_initial_relic_choice(texts, options) else None
