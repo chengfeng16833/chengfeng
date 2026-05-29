@@ -32,7 +32,7 @@ from starsavior_trainer.models import (
     TrainingChoice,
     TrainingHubStatus,
 )
-from starsavior_trainer.screen_reader import PostTrainingResult
+from starsavior_trainer.screen_reader import PostTrainingResult, parse_first_int
 
 
 DEFAULT_EVENT_KEYWORDS = {
@@ -247,6 +247,9 @@ class PolicyConfig:
     reward_continue_button: Rect = Rect(1180, 1250, 230, 64)
     # 技能/潜质界面右上角 ✕ 关闭按钮(前期不学技能,进了就点它退出)。
     skill_select_close_button: Rect = Rect(2125, 300, 90, 66)
+    # 屏幕中心: 用于推进"被误判成 relic_choice 的奖励/结果展示"(委托 SUCCESS、评鉴战
+    # 奖励纯展示、阿尔克那等点任意处继续的全屏展示), 避免它们 parse 不出选项时 pause 卡死。
+    screen_center: Rect = Rect(1180, 660, 200, 120)
 
 
 class TrainerPolicy:
@@ -683,10 +686,23 @@ class TrainerPolicy:
                 return Action("click", choice.back_button, "no commission listed, exit")
             return Action("pause", None, "no commission options recognized")
 
-        # If any commission is flagged suitable (red), honor that first; otherwise
-        # take the lowest-tier (first) entry.
+        # If any commission is flagged suitable (red), honor that first.
         suitable = [option for option in choice.options if option.has_red_text]
-        best = suitable[0] if suitable else choice.options[0]
+        if suitable:
+            best = suitable[0]
+        elif state.character_rank is not None:
+            # Pick the HIGHEST-tier commission we can still do: the one whose 建议综合
+            # 等级 (suggested rank, a number) is highest but still ≤ our character rank.
+            # (User: at rank 21 we should take a mid-tier, not always the lowest I.)
+            doable = [
+                (rank, option)
+                for option in choice.options
+                if (rank := parse_first_int(option.rank)) is not None and rank <= state.character_rank
+            ]
+            best = max(doable, key=lambda item: item[0])[1] if doable else choice.options[0]
+        else:
+            # Unknown character rank → conservatively take the lowest-tier (first) entry.
+            best = choice.options[0]
         if self._pending_commission == best.target and choice.accept_button is not None:
             self._pending_commission = None
             return Action("click", choice.accept_button, f"accept commission: {best.name}")

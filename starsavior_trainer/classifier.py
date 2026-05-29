@@ -601,7 +601,11 @@ def _has_battle_signature(anchors: dict[str, str]) -> bool:
     # The 跳过战斗 button text + 评鉴战 dialog title uniquely identify it as BATTLE.
     skip = anchors.get("battle_skip_battle_button", "")
     title = anchors.get("battle_confirm_title", "")
-    return contains_any_text(skip, ("跳过战斗", "跳过")) and contains_any_text(title, ("评鉴战", "鉴战"))
+    # 评鉴战 与 委托 的战斗确认界面同布局(都有左下「跳过战斗」蓝键 + 中上标题)。标题
+    # 是「基础评鉴战」或「XX讨伐委托」——两者都认, 否则委托确认会被误判 event_fast_forward。
+    return contains_any_text(skip, ("跳过战斗", "跳过")) and contains_any_text(
+        title, ("评鉴战", "鉴战", "委托")
+    )
 
 
 def _has_training_hub_shop_signature(anchors: dict[str, str]) -> bool:

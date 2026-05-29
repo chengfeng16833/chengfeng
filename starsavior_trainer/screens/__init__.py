@@ -179,7 +179,9 @@ def _decide_relic_choice(obs, state, policy):
     if isinstance(obs.payload, RelicChoice):
         return policy.decide_relic_choice(obs.payload, state)
     if not _is_iterable_of(obs.payload, RelicOption):
-        return Action("pause", None, "relic screen missing options")
+        # relic_choice 分类但 parse 不出选项 → 多半是被误判的"奖励/结果展示"(委托 SUCCESS、
+        # 评鉴战奖励纯展示 等点任意处继续的全屏页)。点屏幕中心推进, 别 pause 卡死。
+        return Action("click", policy.config.screen_center, "relic screen no options, click center to advance")
     return policy.decide_relic(obs.payload)
 
 

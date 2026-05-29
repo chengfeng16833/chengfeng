@@ -689,6 +689,14 @@ def parse_dialogue_scene(region_texts: Iterable[RegionText], profile: RegionProf
 
     texts = {item.name: item.text for item in region_texts}
 
+    # 阿尔克那事件: 属性提升的结果展示, 右上 skip 按键对它无效(实机点了画面不动→死循环),
+    # 必须点屏幕中心推进(用户告知)。event_label/title 含"阿尔克那"时把推进点设为屏幕中心。
+    # (这类无选项的事件会被 classify_hybrid 当成可 skip 的 dialogue, 故在此拦下。)
+    arcana_label = texts.get("dialogue_journey_event_label", "") + texts.get("dialogue_journey_title", "")
+    center = profile.regions.get("screen_center_button")
+    if center is not None and contains_any_text(arcana_label, ("阿尔克那", "尔克那", "克那")):
+        return DialogueScene(skip_button=center, variant="arcana_center")
+
     intro_skip = profile.regions.get("dialogue_intro_skip_button")
     if intro_skip is not None and (
         contains_any_text(texts.get("dialogue_intro_skip_button", ""), ("skip", "\u8df3\u8fc7"))

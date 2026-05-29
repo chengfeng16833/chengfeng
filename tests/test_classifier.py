@@ -104,6 +104,19 @@ class ClassifierTest(unittest.TestCase):
         self.assertEqual(screen, Screen.BATTLE)
         self.assertGreaterEqual(confidence, 0.70)
 
+    def test_commission_battle_confirm_classifies_as_battle(self) -> None:
+        # 委托战斗确认界面("XX讨伐委托" + 跳过战斗/开始委托)和评鉴战确认同布局, 也该判 BATTLE
+        # → 点跳过战斗。之前 title 只认"评鉴战"→ 委托被误判 event_fast_forward 死循环。
+        screen, confidence = _match_screen(
+            {
+                "battle_skip_battle_button": "跳过战斗",
+                "battle_confirm_title": "史莱姆讨伐委托",
+            }
+        )
+
+        self.assertEqual(screen, Screen.BATTLE)
+        self.assertGreaterEqual(confidence, 0.70)
+
     def test_rating_battle_confirm_classifies_as_battle(self) -> None:
         # 基础评鉴战 entry confirm: a centred dialog whose battle regions (top-corner)
         # read empty, so classify_by_ocr is UNKNOWN and the blue-button fallback

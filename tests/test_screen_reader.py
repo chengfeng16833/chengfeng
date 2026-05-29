@@ -103,6 +103,25 @@ class ScreenReaderParserTest(unittest.TestCase):
         self.assertEqual([o.target for o in scene.options], [grid_cell])
         self.assertEqual(scene.confirm_button, done)
 
+    # ---- dialogue: 阿尔克那事件(skip无效,点屏幕中心) ----
+    def test_parse_dialogue_arcana_event_clicks_screen_center(self) -> None:
+        # 阿尔克那事件是结果展示(属性提升), skip 按键无效, 必须点屏幕中心推进(用户告知)。
+        center = Rect(1180, 660, 200, 120)
+        profile = RegionProfile(
+            "test",
+            (2560, 1440),
+            {
+                "screen_center_button": center,
+                "dialogue_journey_skip_button": Rect(1855, 54, 78, 65),
+                "dialogue_journey_text_area": Rect(680, 1195, 1250, 85),
+            },
+        )
+        texts = [RegionText("dialogue_journey_event_label", "阿尔克那事件 力量", 1.0)]
+        scene = parse_dialogue_scene(texts, profile)
+        self.assertIsNotNone(scene)
+        self.assertEqual(scene.skip_button, center)
+        self.assertEqual(scene.variant, "arcana_center")
+
     # ---- existing helpers ----
     def test_normalize_ocr_text_handles_common_width_and_case_noise(self) -> None:
         self.assertEqual(normalize_ocr_text("  Fail\uff05  "), "fail%")

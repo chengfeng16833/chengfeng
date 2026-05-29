@@ -289,6 +289,9 @@ class GameState:
     # Current journey round/turn (1-based). None when unknown/not yet read from the
     # hub. Drives the early-game training bias (see PolicyConfig.early_game_rounds).
     current_round: int | None = None
+    # 角色综合等级(数字, 从训练大厅 "RANK 21" 读)。委托选阶用: 选建议综合等级≤它的最高阶
+    # 委托(能做的最高阶)。None=未知时退回选最低阶。
+    character_rank: int | None = None
 
 
 @dataclass(frozen=True)

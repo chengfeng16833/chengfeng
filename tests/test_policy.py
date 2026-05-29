@@ -191,6 +191,14 @@ class TrainerPolicyTest(unittest.TestCase):
 
         self.assertEqual(action.target, base.target)
 
+    def test_relic_choice_no_options_clicks_screen_center(self) -> None:
+        # relic_choice 分类但 parse 不出选项 = 多半是被误判的"奖励/结果展示"(委托SUCCESS /
+        # 评鉴战奖励纯展示 等点任意处继续的全屏页)→ 点屏幕中心推进, 不要 pause 卡死。
+        policy = TrainerPolicy()
+        action = policy.decide(GameState(), Observation(Screen.RELIC_CHOICE, 1.0, None))
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, policy.config.screen_center)
+
     def test_blessing_choice_two_step_confirm_for_same_value(self) -> None:
         # 多个同值(35)体力祝福: 第1帧选靠上第一个(选中), 第2帧两步防抖确认 —— 不能依赖
         # selected_name(同值卡 OCR 分不清, 会永不确认→死循环)。
@@ -1033,6 +1041,18 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertIn("select commission", select.reason)
         self.assertEqual(accept.target, choice.accept_button)
         self.assertIn("accept commission", accept.reason)
+
+    def test_commission_picks_highest_tier_within_character_rank(self) -> None:
+        # 角色 rank 21 应选 建议综合等级≤21 的最高阶委托(中阶18), 而不是最低阶(10)或
+        # 做不了的高阶(25)。用户实机反馈: rank21 该选中阶, 之前总选最低阶 I。
+        low = CommissionOption("low", "建议综合等级 10", False, Rect(2050, 465, 380, 110))
+        mid = CommissionOption("mid", "建议综合等级 18", False, Rect(2050, 640, 380, 110))
+        high = CommissionOption("high", "建议综合等级 25", False, Rect(2050, 815, 380, 110))
+        choice = CommissionChoice(options=[low, mid, high], accept_button=Rect(1880, 1255, 600, 100))
+
+        action = TrainerPolicy().decide_commission(choice, GameState(character_rank=21))
+
+        self.assertEqual(action.target, mid.target)
 
     def test_commission_select_exits_when_no_options(self) -> None:
         # Empty list → leave via the back arrow instead of getting stuck.

@@ -170,6 +170,7 @@
     "dialogue_journey_skip_button": [1855, 54, 78, 65],
     "dialogue_journey_fast_forward_button": [1958, 54, 78, 65],
     "dialogue_journey_text_area": [640, 1160, 1280, 170],
+    "screen_center_button": [1180, 660, 200, 120],
 
     "relic_choice_title": [260, 62, 220, 60],
     "relic_choice_status": [2120, 55, 288, 68],

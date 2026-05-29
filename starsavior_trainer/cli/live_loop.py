@@ -61,6 +61,7 @@ from starsavior_trainer.screen_reader import (
     PostTrainingResult,
     RegionOcrReader,
     parse_battle,
+    parse_first_int,
     parse_blessing_choice,
     parse_blessing_setup,
     parse_character_select,
@@ -336,6 +337,10 @@ def main() -> None:
                 round_tracker.reset()
             if observation.screen == Screen.TRAINING_HUB and isinstance(observation.payload, TrainingHubStatus):
                 round_tracker.observe_date(observation.payload.turn_label)
+                # 从大厅 "RANK 21" 读角色综合等级 → 委托选阶用(选建议等级≤它的最高阶)。
+                rank_num = parse_first_int(observation.payload.rank_label or "")
+                if rank_num is not None:
+                    state = replace(state, character_rank=rank_num)
             state = replace(state, current_round=round_tracker.current_round)
             print(f"  current_round={round_tracker.current_round}")
 
