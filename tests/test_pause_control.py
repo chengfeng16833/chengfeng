@@ -1,10 +1,47 @@
-"""Tests for the F12 pause hotkey: state toggling and graceful registration."""
+"""Tests for the F9 pause hotkey and the mouse-corner emergency stop."""
 import sys
 import types
 import unittest
 from unittest import mock
 
-from starsavior_trainer.cli.live_loop import PauseController, install_pause_hotkey
+from starsavior_trainer.cli.live_loop import (
+    PauseController,
+    _is_corner_point,
+    install_pause_hotkey,
+)
+
+
+class CornerStopTest(unittest.TestCase):
+    """Robust emergency stop: cursor inside ANY corner region aborts the run.
+
+    Unlike pyautogui's single-pixel FAILSAFE points (which need an exact landing
+    pixel at the precise moment pyautogui is called), this checks a whole corner
+    region at the top of every loop iteration — a quick mouse-slam to a corner
+    reliably stops the bot regardless of DPI / exact pixel / OCR timing.
+    """
+
+    W, H, M = 2560, 1440, 120
+
+    def test_all_four_corner_regions_trigger(self) -> None:
+        for x, y in [
+            (0, 0), (5, 5), (self.M, self.M),           # top-left region
+            (self.W - 1, 0), (self.W - 5, 5),           # top-right
+            (0, self.H - 1), (5, self.H - 5),           # bottom-left
+            (self.W - 1, self.H - 1),                   # bottom-right
+        ]:
+            self.assertTrue(_is_corner_point(x, y, self.W, self.H, self.M), (x, y))
+
+    def test_centre_and_edge_midpoints_do_not_trigger(self) -> None:
+        # Centre and edge-midpoints (near only one axis) must NOT trigger, so the
+        # bot's own clicks on UI elements never false-stop it.
+        for x, y in [
+            (self.W // 2, self.H // 2),                 # centre
+            (self.W // 2, 5),                           # top edge midpoint
+            (5, self.H // 2),                           # left edge midpoint
+            (self.M + 1, self.M + 1),                   # just outside top-left region
+            (self.W - self.M - 1, self.H - self.M - 1), # just outside bottom-right
+        ]:
+            self.assertFalse(_is_corner_point(x, y, self.W, self.H, self.M), (x, y))
 
 
 class PauseControllerTest(unittest.TestCase):

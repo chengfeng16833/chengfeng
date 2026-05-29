@@ -206,6 +206,21 @@ def parse_first_int(text: str) -> int | None:
     return _ocr_int_token_to_int(match.group(1))
 
 
+def parse_rank_number(text: str) -> int | None:
+    """Extract the level number from a 'RANK 21' / 'RANK17' / 'RANK 17 一级' label.
+
+    parse_first_int refuses a digit glued to a letter (its ``(?<![a-z])`` guard),
+    so 'RANK17' would lose the leading '1' and read as 7. Rank labels legitimately
+    glue the number to 'RANK', so here we take the first OCR-digit run regardless
+    of an adjacent letter.
+    """
+    normalized = normalize_ocr_text(text)
+    match = re.search(r"[0-9olis][0-9olis,]*", normalized)
+    if match is None:
+        return None
+    return _ocr_int_token_to_int(match.group(0))
+
+
 def parse_last_int(text: str) -> int | None:
     normalized = normalize_ocr_text(text)
     matches = re.findall(r"(?<![a-z])([0-9olis][0-9olis,]*)(?![a-z])", normalized)
@@ -1148,7 +1163,17 @@ def parse_commission_select(
         return None
     accept_btn = profile.regions.get("commission_select_accept_button")
     back_btn = profile.regions.get("top_back_button")
-    return CommissionChoice(options=options, accept_button=accept_btn, back_button=back_btn)
+    # 建议综合等级只在中央详情区显示当前选中委托的值 (如 "RANK 17"); 角色综合等级在
+    # 左上 ("RANK 21")。两者都是数字, 供检视器逐个点开读建议等级、选≤角色等级的最高阶。
+    suggested_rank = parse_rank_number(texts.get("commission_select_suggested_rank", ""))
+    character_rank = parse_rank_number(texts.get("commission_select_character_rank", ""))
+    return CommissionChoice(
+        options=options,
+        accept_button=accept_btn,
+        back_button=back_btn,
+        selected_suggested_rank=suggested_rank,
+        character_rank=character_rank,
+    )
 
 
 def _has_commission_anchor(texts: dict[str, str], profile: RegionProfile) -> bool:

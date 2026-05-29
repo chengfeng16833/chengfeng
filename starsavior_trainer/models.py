@@ -136,6 +136,12 @@ class CommissionChoice:
     # Top-left back arrow, used to leave the screen when no suitable commission
     # is available (rule: only accept red-text/suitable commissions, else exit).
     back_button: Rect | None = None
+    # 当前选中委托的「建议综合等级」(详情区数字, 如 RANK 17)。列表项只有阶名(低/中/
+    # 高阶委托), 建议等级只在选中后于中央详情区显示 → 检视器逐个点开读它来选阶。
+    selected_suggested_rank: int | None = None
+    # 角色综合等级(委托界面左上 "RANK 21")。选"建议等级≤它的最高阶"委托用; 直接从本
+    # 界面读, 不依赖先经过训练大厅。
+    character_rank: int | None = None
 
 
 @dataclass(frozen=True)

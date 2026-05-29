@@ -33,6 +33,7 @@ from starsavior_trainer.classifier import (
 )
 from starsavior_trainer.training_inspector import TrainingInspector
 from starsavior_trainer.shop_inspector import ShopInspector
+from starsavior_trainer.commission_inspector import CommissionInspector
 from starsavior_trainer.round_tracker import RoundTracker
 from starsavior_trainer.executor import DryRunExecutor, PyAutoGuiExecutor, map_action_to_rect
 from starsavior_trainer.image_regions import crop_region
@@ -104,6 +105,42 @@ _TRAINING_SELECT_SLEEP = 0.5
 # ---------------------------------------------------------------------------
 # F12 pause hotkey — lets the operator reclaim mouse/keyboard control mid-run
 # ---------------------------------------------------------------------------
+
+
+def _is_corner_point(x: int, y: int, width: int, height: int, margin: int = 120) -> bool:
+    """True if (x, y) lies within ``margin`` px of ANY of the four screen corners.
+
+    Robust emergency-stop predicate: a corner is "near a horizontal edge AND near
+    a vertical edge" — so edge midpoints (near only one axis) don't count, but all
+    four corner regions do. Unlike pyautogui's exact-pixel FAILSAFE this triggers
+    on a whole region, so a quick mouse-slam reliably stops the bot.
+    """
+    near_left = x <= margin
+    near_right = x >= width - margin
+    near_top = y <= margin
+    near_bottom = y >= height - margin
+    return (near_left or near_right) and (near_top or near_bottom)
+
+
+def _mouse_at_screen_corner(margin: int = 120) -> bool:
+    """Read the OS cursor position and report whether it's in a screen corner.
+
+    Used at the top of every loop iteration as a reliable manual stop that does
+    NOT depend on pyautogui's call timing or exact-pixel FAILSAFE points. Never
+    raises — any failure (non-Windows, ctypes issue) reports "not in corner" so
+    the loop keeps running.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        pt = wintypes.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+        width = ctypes.windll.user32.GetSystemMetrics(0)
+        height = ctypes.windll.user32.GetSystemMetrics(1)
+        return _is_corner_point(pt.x, pt.y, width, height, margin)
+    except Exception:
+        return False
 
 
 class PauseController:
@@ -212,6 +249,7 @@ def main() -> None:
     policy = TrainerPolicy()
     training_inspector = TrainingInspector(max_fail_rate=policy.config.max_training_fail_rate)
     shop_inspector = ShopInspector()
+    commission_inspector = CommissionInspector()
     state = GameState(desired_character=args.character, desired_variant=args.variant, build_profile=args.build_profile)
     round_tracker = RoundTracker()
     executor = PyAutoGuiExecutor() if args.execute else DryRunExecutor()
@@ -248,6 +286,16 @@ def main() -> None:
     was_paused = False
     try:
         while args.max_iterations == 0 or iteration < args.max_iterations:
+            # Mouse-corner emergency stop, checked FIRST every iteration. The most
+            # reliable "reclaim control" path: move the mouse into any screen
+            # corner and the bot exits cleanly. Beats both the keyboard hotkey
+            # (swallowed by a focused admin/Steam window) and pyautogui's
+            # exact-pixel FAILSAFE (needs a precise landing pixel at the exact
+            # moment pyautogui is called) — this polls a whole corner region at
+            # the top of the loop, independent of focus/privilege/timing.
+            if args.execute and _mouse_at_screen_corner():
+                print("\n[急停] 鼠标移到屏幕角落，已停止 bot，控制权交还。")
+                return
             # While paused, do nothing but idle: no capture, no decision, no
             # click. Print once per second so it's clear the bot is waiting.
             if pause.paused:
@@ -339,6 +387,12 @@ def main() -> None:
             elif args.verbose:
                 print("  (no payload parsed)")
 
+            # Diagnostic: the intro_story skip target (top-right) can collide with a
+            # HUD screen's menu button — save the frame whenever we classify
+            # intro_story so a mis-classified HUD-dialogue can be inspected offline.
+            if observation.screen == Screen.DIALOGUE and getattr(observation.payload, "variant", "") == "intro_story":
+                save_image(screenshot, Path("screenshots/live_intro_story_latest.png"))
+
             # Round tracking: the hub shows no turn counter, only a date — count
             # date changes as rounds (drives the early-game training bias). Reset
             # when a new journey is being set up (initial / character select).
@@ -381,6 +435,22 @@ def main() -> None:
                     )
             elif observation.screen != Screen.SHOP:
                 shop_inspector.reset()
+            # Commission: the list shows only tier names; the suggested rank shows
+            # only in the detail once a commission is selected, so inspect each by
+            # clicking it, read its 建议综合等级, then accept the highest tier whose
+            # suggested rank ≤ character rank. Mirrors the training inspector. Falls
+            # back to the policy (returns None) when the character rank is unknown.
+            if observation.screen == Screen.COMMISSION_SELECT and isinstance(observation.payload, CommissionChoice):
+                action = commission_inspector.decide(observation.payload, state)
+                if action is not None:
+                    print(
+                        f"  commission_inspector_records={commission_inspector.records} "
+                        f"pending={commission_inspector.pending} "
+                        f"char_rank={observation.payload.character_rank} "
+                        f"suggested={observation.payload.selected_suggested_rank}"
+                    )
+            elif observation.screen != Screen.COMMISSION_SELECT:
+                commission_inspector.reset()
             if action is None:
                 action = policy.decide(state, observation)
             if observation.screen == Screen.CHARACTER_SELECT and action.kind == "click":

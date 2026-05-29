@@ -330,6 +330,8 @@
     "commission_select_option_4_red_text": [2050, 990, 380, 110],
     "commission_select_option_5_red_text": [2050, 1165, 380, 100],
     "commission_select_accept_button": [1880, 1255, 600, 100],
+    "commission_select_suggested_rank": [1340, 850, 210, 48],
+    "commission_select_character_rank": [120, 432, 175, 42],
 
     "shop_item_1": [2240, 552, 260, 62],
     "shop_item_2": [2240, 707, 260, 62],
