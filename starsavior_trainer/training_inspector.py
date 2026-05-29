@@ -44,6 +44,12 @@ class TrainingInspector:
             self.records[self.pending] = selected.stat_gain
             self.fails[self.pending] = selected.fail_rate
             self.pending = None
+            # Fatigue is global: the moment any inspected training reads ≥ threshold,
+            # stop inspecting the rest and defer to rest immediately — the others are
+            # almost certainly too high too, so clicking them just wastes turns.
+            if selected.fail_rate is not None and selected.fail_rate >= self.max_fail_rate:
+                self.reset()
+                return None
 
         # Inspect each not-yet-seen candidate by clicking it (selects -> panel
         # shows its gain next turn).

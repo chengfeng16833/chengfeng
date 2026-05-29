@@ -65,16 +65,27 @@ class TrainingInspectorTest(unittest.TestCase):
         self.assertEqual(a.target, _CONFIRM)
         self.assertIn("confirm training power", a.reason)
 
-    def test_defers_to_policy_when_all_priority_trainings_too_risky(self) -> None:
+    def test_rests_immediately_when_a_training_hits_threshold(self) -> None:
+        # Fatigue is global: once ANY inspected training reads ≥ the fail-rate
+        # threshold, the rest are almost certainly high too. Don't waste turns
+        # clicking the others — return None right away so the policy routes back to
+        # the hub to rest. (User: 失败率到达30%或超过就直接去休息,不依次点其他训练.)
         insp = TrainingInspector(max_fail_rate=30)
         st = GameState(build_profile="power_focus")
 
-        insp.decide(_choices(), st)
-        insp.decide(_choices("power", gain=21, fail=55), st)
-        insp.decide(_choices("stamina", gain=18, fail=55), st)
-        # All inspected, all fail rates exceed the threshold -> return None so the
-        # policy can route back to the hub to rest.
-        self.assertIsNone(insp.decide(_choices("guts", gain=25, fail=55), st))
+        insp.decide(_choices(), st)  # inspect power
+        # power reads 55% (≥30) → stop inspecting, defer to rest immediately.
+        self.assertIsNone(insp.decide(_choices("power", gain=21, fail=55), st))
+
+    def test_keeps_inspecting_when_fail_rate_below_threshold(self) -> None:
+        # A safe fail rate must NOT short-circuit — keep inspecting the others.
+        insp = TrainingInspector(max_fail_rate=30)
+        st = GameState(build_profile="power_focus")
+
+        insp.decide(_choices(), st)  # inspect power
+        a = insp.decide(_choices("power", gain=21, fail=10), st)  # power safe → inspect stamina
+        self.assertIsNotNone(a)
+        self.assertEqual(a.target, _TARGETS["stamina"])
 
 
 if __name__ == "__main__":
