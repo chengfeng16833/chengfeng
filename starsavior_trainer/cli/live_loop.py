@@ -133,8 +133,16 @@ class PauseController:
         self._paused = False
 
 
-def install_pause_hotkey(controller: PauseController, key: str = "f12") -> bool:
+def install_pause_hotkey(controller: PauseController, key: str = "f9") -> bool:
     """Register a global hotkey that toggles ``controller``'s pause state.
+
+    Defaults to **F9**, not F12: F12 is Steam's default screenshot key and gets
+    swallowed by Steam before our global hook ever sees it, so a F12 pause "did
+    nothing". F9 is normally free.
+
+    Binds with ``trigger_on_release=True`` so a slightly-held press can't fire
+    the OS key-repeat several times and toggle the flag back to where it started
+    (another "no effect" failure mode).
 
     Uses the ``keyboard`` library.  IMPORTANT: ``keyboard`` installs a
     low-level, system-wide keyboard hook.  Listening for a *global* hotkey can
@@ -150,21 +158,21 @@ def install_pause_hotkey(controller: PauseController, key: str = "f12") -> bool:
     try:
         import keyboard  # type: ignore  # lazy: only needed for the live hotkey
     except Exception as exc:  # ImportError or any other import-time failure
-        msg = f"F12 暂停热键不可用（keyboard 库导入失败: {exc}）。脚本将正常运行。"
+        msg = f"暂停热键不可用（keyboard 库导入失败: {exc}）。脚本将正常运行。"
         logger.warning(msg)
         print(f"[warn] {msg}")
         return False
 
     try:
-        keyboard.add_hotkey(key, controller.toggle)
+        keyboard.add_hotkey(key, controller.toggle, trigger_on_release=True)
     except Exception as exc:  # registration failed — often needs admin rights
-        msg = f"F12 暂停热键注册失败（监听全局热键可能需要管理员权限运行: {exc}）。脚本将正常运行。"
+        msg = f"暂停热键注册失败（监听全局热键可能需要管理员权限运行: {exc}）。脚本将正常运行。"
         logger.warning(msg)
         print(f"[warn] {msg}")
         return False
 
-    logger.info("F12 暂停热键已启用。")
-    print(f"F12 暂停热键已启用：实跑中按 {key.upper()} 可暂停/恢复（夺回控制权）。")
+    logger.info(f"{key.upper()} 暂停热键已启用。")
+    print(f"{key.upper()} 暂停热键已启用：实跑中按 {key.upper()} 可暂停/恢复（夺回控制权）。")
     return True
 
 
@@ -226,11 +234,12 @@ def main() -> None:
     print("build=journey-visual-guard-20260520a")
     print(f"game window: {window.title} ({window.rect.width}x{window.rect.height})")
 
-    # F12 pause hotkey: lets the operator stop the bot's actions mid-run and
+    # F9 pause hotkey: lets the operator stop the bot's actions mid-run and
     # reclaim control without killing the process. Falls back gracefully (warns
-    # and runs unpaused) if the hotkey can't be registered.
+    # and runs unpaused) if the hotkey can't be registered. (F12 is avoided — it's
+    # Steam's screenshot key and gets swallowed before our hook sees it.)
     pause = PauseController()
-    install_pause_hotkey(pause, key="f12")
+    install_pause_hotkey(pause, key="f9")
 
     iteration = 0
     consecutive_character_confirms = 0
@@ -243,7 +252,7 @@ def main() -> None:
             # click. Print once per second so it's clear the bot is waiting.
             if pause.paused:
                 was_paused = True
-                print("已暂停，按F12继续")
+                print("已暂停，按F9继续")
                 time.sleep(1.0)
                 continue
             if was_paused:
@@ -557,7 +566,7 @@ def _training_select_blue(image, profile: RegionProfile, verbose: bool) -> list[
                 name=attr,
                 stat_gain=0,
                 ring=ring,
-                fail_rate=0,
+                fail_rate=None,  # blue mode reads no 失败率 → unknown, not 0%
                 target=card_rect,
                 confirm_button=confirm_button,
                 back_button=back_button,

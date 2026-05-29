@@ -56,7 +56,15 @@ class TrainingInspector:
 
         # All inspected. Among those with an acceptable fail rate, take the most
         # gain (ties -> the inspect_attrs order, i.e. 力量 > 体力 > 韧性).
-        affordable = [c for c in candidates if self.fails.get(c.name, 0) <= self.max_fail_rate]
+        # A card counts as affordable only if we actually READ its fail rate and it's
+        # within threshold. A missing entry means we never confirmed its rate (OCR
+        # never caught it selected) — treat that as un-affordable, not as 0%, so we
+        # bail to rest instead of training a card whose real fail rate is unknown.
+        affordable = [
+            c
+            for c in candidates
+            if (f := self.fails.get(c.name)) is not None and f <= self.max_fail_rate
+        ]
         if not affordable:
             # Every priority training is too risky (low stamina) — defer to the
             # policy, which routes back to the hub to rest.

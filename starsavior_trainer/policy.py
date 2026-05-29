@@ -311,7 +311,11 @@ class TrainerPolicy:
         return handler.decide(observation, state, self)
 
     def training_score(self, choice: TrainingChoice, state: GameState | None = None) -> float:
-        if choice.fail_rate > self.config.max_training_fail_rate:
+        # fail_rate is None when the card's 失败率 isn't shown (it isn't the selected
+        # card) — i.e. UNKNOWN, not 0%. Never gamble on an un-inspected card: treat
+        # unknown (and over-threshold) fail rates as un-trainable so the policy bails
+        # to rest instead of training a card whose real fail rate could be ~99%.
+        if choice.fail_rate is None or choice.fail_rate > self.config.max_training_fail_rate:
             return float("-inf")
         if choice.fail_rate <= 5:
             fail_penalty = 0

@@ -951,9 +951,11 @@ def parse_training_select(
         if card_fail is None:
             card_fail = _parse_fail_rate(card_text)
         # The failure rate is only rendered on the currently highlighted card, so
-        # its presence is a reliable "this card is selected" signal.
+        # its presence is a reliable "this card is selected" signal. When it is NOT
+        # shown the rate is UNKNOWN (None), never 0 — a 0 here would read as "safe 0%"
+        # and let the policy gamble on an un-inspected, possibly ~99%-fail card.
         selected = card_fail is not None
-        fail_rate = card_fail or 0
+        fail_rate = card_fail
         stat_gain = parse_first_int(gain_text) or 0
 
         ring = "none"

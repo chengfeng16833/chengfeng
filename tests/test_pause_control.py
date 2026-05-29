@@ -36,9 +36,10 @@ class InstallPauseHotkeyTest(unittest.TestCase):
     def test_success_binds_toggle_callback(self) -> None:
         recorded: dict[str, object] = {}
 
-        def fake_add_hotkey(key, callback):
+        def fake_add_hotkey(key, callback, trigger_on_release=False):
             recorded["key"] = key
             recorded["callback"] = callback
+            recorded["trigger_on_release"] = trigger_on_release
 
         fake_keyboard = types.SimpleNamespace(add_hotkey=fake_add_hotkey)
         with mock.patch.dict(sys.modules, {"keyboard": fake_keyboard}):
@@ -47,12 +48,30 @@ class InstallPauseHotkeyTest(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(recorded["key"], "f12")
+        # Must fire on key RELEASE, so a slightly-held press (OS key-repeat) can't
+        # toggle the flag several times and land back where it started ("no effect").
+        self.assertIs(recorded["trigger_on_release"], True)
         # the hotkey must be wired to the controller's toggle
         self.assertFalse(controller.paused)
         recorded["callback"]()  # type: ignore[operator]
         self.assertTrue(controller.paused)
         recorded["callback"]()  # type: ignore[operator]
         self.assertFalse(controller.paused)
+
+    def test_default_key_is_f9_not_f12(self) -> None:
+        # F12 is Steam's default screenshot key and gets swallowed before our global
+        # hook sees it, so the pause hotkey defaults to F9 instead.
+        recorded: dict[str, object] = {}
+
+        def fake_add_hotkey(key, callback, trigger_on_release=False):
+            recorded["key"] = key
+
+        fake_keyboard = types.SimpleNamespace(add_hotkey=fake_add_hotkey)
+        with mock.patch.dict(sys.modules, {"keyboard": fake_keyboard}):
+            ok = install_pause_hotkey(PauseController())
+
+        self.assertTrue(ok)
+        self.assertEqual(recorded["key"], "f9")
 
     def test_missing_library_returns_false_without_raising(self) -> None:
         # A None entry in sys.modules makes ``import keyboard`` raise ImportError.

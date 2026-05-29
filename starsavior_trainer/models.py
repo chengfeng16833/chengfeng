@@ -61,7 +61,9 @@ class TrainingChoice:
     name: str
     stat_gain: int
     ring: str
-    fail_rate: int
+    # 失败率(百分数)。None = 该卡未被选中,屏幕没显示它的失败率 → 未知(不是0%)。
+    # 只有当前选中的卡会显示失败率;策略层把 None 当作"不可冒险"(见 training_score)。
+    fail_rate: int | None
     target: Rect
     # Whether this card is currently highlighted/selected (only the selected card
     # shows its 失败率 on screen). The screen-level confirm (训练) button is carried

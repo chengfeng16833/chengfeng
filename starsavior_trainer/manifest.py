@@ -59,7 +59,7 @@ def _parse_payload(screen: Screen, raw: Any) -> object | None:
                 name=str(item["name"]),
                 stat_gain=int(item["stat_gain"]),
                 ring=str(item.get("ring", "none")),
-                fail_rate=int(item.get("fail_rate", 0)),
+                fail_rate=(int(item["fail_rate"]) if item.get("fail_rate") is not None else None),
                 target=_rect(item["target"]),
             )
             for item in raw

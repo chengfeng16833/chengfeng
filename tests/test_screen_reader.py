@@ -560,7 +560,8 @@ class ScreenReaderParserTest(unittest.TestCase):
 
         self.assertEqual(len(choices), 1)
         self.assertEqual(choices[0].name, "wisdom")
-        self.assertEqual(choices[0].fail_rate, 0)
+        # No '%' shown → fail rate is UNKNOWN (None), not a safe 0%.
+        self.assertIsNone(choices[0].fail_rate)
 
     def test_parse_training_select_returns_none_without_anchor(self) -> None:
         profile = RegionProfile("test", (2560, 1440), {})

@@ -396,6 +396,44 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertNotEqual(action.kind, "pause")
         self.assertIn("rest", action.reason)
 
+    def test_training_score_excludes_unknown_fail_rate(self) -> None:
+        # A card whose 失败率 is not shown on screen (it isn't the selected card)
+        # has an UNKNOWN fail rate, encoded as None — never 0. Scoring it must
+        # treat it as un-trainable (-inf), not as a safe 0% card, so the policy
+        # never gambles on a card it hasn't actually inspected.
+        policy = TrainerPolicy()
+        unknown = TrainingChoice("stamina", 20, "none", None, Rect(1750, 487, 650, 112))
+        self.assertEqual(policy.training_score(unknown, GameState(build_profile="stamina_tank")), float("-inf"))
+
+    def test_training_rests_when_main_too_high_and_others_unknown(self) -> None:
+        # Real high-fatigue frame as the inspector hands it to the policy: only the
+        # currently-selected card shows its 失败率 (here 90%, over threshold); every
+        # other card's fail rate is UNKNOWN (None, not shown). The bug was that the
+        # unknown cards read as fail=0 and the build bias picked one to train on —
+        # training a card whose real fail rate was ~99%. Correct behaviour: no card
+        # has a known-safe fail rate, so bail back to the hub to rest.
+        confirm = Rect(2080, 1252, 400, 95)
+        back = Rect(90, 62, 55, 64)
+        choices = [
+            TrainingChoice(
+                name,
+                0,
+                "none",
+                90 if name == "guts" else None,  # only the selected card shows its rate
+                Rect(1750, 338 + i * 148, 650, 112),
+                selected=(name == "guts"),
+                confirm_button=confirm,
+                back_button=back,
+            )
+            for i, name in enumerate(("power", "stamina", "guts", "wisdom", "speed"))
+        ]
+
+        action = TrainerPolicy().decide_training(choices, GameState(build_profile="stamina_tank"))
+
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, back)
+        self.assertIn("rest", action.reason)
+
     def test_training_pauses_when_all_high_and_no_back_button(self) -> None:
         # Fallback: if the back button is unavailable, still pause (don't crash).
         choices = [
