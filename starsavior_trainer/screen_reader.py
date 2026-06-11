@@ -15,6 +15,7 @@ from starsavior_trainer.models import (
     BlessingOption,
     BlessingSetup,
     BlessingSlot,
+    CharacterFilter,
     CharacterOption,
     CharacterSelect,
     ConfirmDialog,
@@ -321,6 +322,7 @@ def parse_character_select(
         confirm_button=confirm_button,
         selected_name=selected_option.name,
         can_scroll=can_scroll,
+        filter_button=profile.regions.get("character_select_filter_button"),
     )
 
 
@@ -413,6 +415,7 @@ def parse_character_select_bbox(
         confirm_button=confirm_button,
         selected_name=selected_option.name,
         can_scroll=can_scroll,
+        filter_button=profile.regions.get("character_select_filter_button"),
     )
 
 
@@ -619,6 +622,31 @@ def _parse_detail_panel_selection(texts: dict[str, str]) -> tuple[str, int] | No
             if parsed is not None:
                 return parsed
     return None
+
+
+_FILTER_PROFESSION_ORDER = ("坦克", "突击者", "游侠", "术师", "刺客", "辅助")
+
+
+def parse_character_filter(
+    region_texts: Iterable[RegionText],
+    profile: RegionProfile,
+) -> CharacterFilter | None:
+    """角色筛选弹窗: 六个职业按钮(固定顺序对应 prof_1..prof_6 区域)+ 确认。"""
+    confirm_button = profile.regions.get("character_filter_confirm_button")
+    if confirm_button is None:
+        return None
+    buttons: dict[str, Rect] = {}
+    for index, name in enumerate(_FILTER_PROFESSION_ORDER, start=1):
+        rect = profile.regions.get(f"character_filter_prof_{index}")
+        if rect is not None:
+            buttons[name] = rect
+    if not buttons:
+        return None
+    return CharacterFilter(
+        profession_buttons=buttons,
+        confirm_button=confirm_button,
+        reset_button=profile.regions.get("character_filter_reset_button"),
+    )
 
 
 def parse_main_screen(

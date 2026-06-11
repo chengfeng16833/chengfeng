@@ -33,6 +33,9 @@ class Screen(str, Enum):
     # 主界面菜单栏面板(付费商店/主线商店/作战/旅程…图标网格)。注意与 GAME_MENU
     # (局内误触的 菜单+观测 弹窗)是两个不同画面。
     MAIN_MENU_PANEL = "main_menu_panel"
+    # 角色选择的筛选弹窗(职业/属性/救援者阶级 三行 + 重置/确认)。点漏斗按钮弹出,
+    # 用职业筛选解决重名角色(docx: 战士=UI里的「突击者」)。
+    CHARACTER_FILTER = "character_filter"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or
@@ -196,6 +199,17 @@ class CharacterSelect:
     confirm_button: Rect
     selected_name: str | None = None
     can_scroll: bool = True
+    # 右上角「排序」旁的漏斗筛选按钮(赛前职业筛选入口); 区域未配置时为 None。
+    filter_button: Rect | None = None
+
+
+@dataclass(frozen=True)
+class CharacterFilter:
+    """角色筛选弹窗 payload: 职业按钮(UI 用语: 坦克/突击者/游侠/术师/刺客/辅助)。"""
+
+    profession_buttons: dict[str, Rect]
+    confirm_button: Rect
+    reset_button: Rect | None = None
 
 
 @dataclass(frozen=True)

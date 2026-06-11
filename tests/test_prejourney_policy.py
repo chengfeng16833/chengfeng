@@ -9,10 +9,14 @@
 import unittest
 
 from starsavior_trainer.classifier import (
+    _has_character_filter_signature,
     _has_main_menu_panel_signature,
     _has_main_screen_signature,
 )
 from starsavior_trainer.models import (
+    CharacterFilter,
+    CharacterOption,
+    CharacterSelect,
     GameState,
     MainMenuPanel,
     MainScreen,
@@ -24,6 +28,7 @@ from starsavior_trainer.policy import TrainerPolicy
 from starsavior_trainer.prejourney import (
     imprint_index_to_row_col,
     normalize_difficulty,
+    normalize_profession,
 )
 from starsavior_trainer.regions import RegionProfile
 from starsavior_trainer.run_config import PreJourneyConfig
@@ -146,6 +151,118 @@ class InitialDifficultyTest(unittest.TestCase):
         action = TrainerPolicy().decide(GameState(), Observation(Screen.INITIAL, 0.95))
         self.assertEqual(action.kind, "click")
         self.assertEqual(action.target, Rect(2040, 1318, 470, 75))
+
+
+def _character_select(filter_button: Rect | None = Rect(2430, 245, 85, 80)) -> CharacterSelect:
+    return CharacterSelect(
+        options=[
+            CharacterOption(
+                name="芙蕾", rank=None, stars=3, specialty=None,
+                selected=False, target=Rect(2200, 300, 300, 90),
+            )
+        ],
+        confirm_button=Rect(2280, 1300, 240, 80),
+        filter_button=filter_button,
+    )
+
+
+class ProfessionFilterTest(unittest.TestCase):
+    """角色选择的职业筛选: 漏斗按钮 → 筛选弹窗点职业 → 确认 → 回列表找角色。"""
+
+    def test_character_select_opens_filter_when_profession_configured(self) -> None:
+        policy = TrainerPolicy()
+        state = _state(profession="术师")
+        payload = _character_select()
+
+        action = policy.decide(state, Observation(Screen.CHARACTER_SELECT, 0.95, payload=payload))
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, Rect(2430, 245, 85, 80))
+        self.assertIn("filter", action.reason)
+
+    def test_character_select_skips_filter_without_profession(self) -> None:
+        policy = TrainerPolicy()
+        state = _state()  # profession 默认 ""
+        payload = _character_select()
+
+        action = policy.decide(state, Observation(Screen.CHARACTER_SELECT, 0.95, payload=payload))
+        # 不点漏斗, 走现有找角色逻辑(没配目标角色时的现有行为)。
+        self.assertNotEqual(action.target, Rect(2430, 245, 85, 80))
+
+    def test_character_select_skips_filter_after_done(self) -> None:
+        policy = TrainerPolicy()
+        policy.prejourney_progress.profession_filter_done = True
+        state = _state(profession="术师")
+        payload = _character_select()
+
+        action = policy.decide(state, Observation(Screen.CHARACTER_SELECT, 0.95, payload=payload))
+        self.assertNotEqual(action.target, Rect(2430, 245, 85, 80))
+
+    def test_filter_dialog_clicks_profession_then_confirm(self) -> None:
+        policy = TrainerPolicy()
+        state = _state(profession="术师")
+        payload = CharacterFilter(
+            profession_buttons={
+                "坦克": Rect(384, 590, 250, 100),
+                "术师": Rect(1248, 590, 250, 100),
+            },
+            confirm_button=Rect(1310, 1180, 260, 90),
+        )
+        obs = Observation(Screen.CHARACTER_FILTER, 0.95, payload=payload)
+
+        first = policy.decide(state, obs)
+        self.assertEqual(first.target, Rect(1248, 590, 250, 100))
+
+        second = policy.decide(state, obs)
+        self.assertEqual(second.target, Rect(1310, 1180, 260, 90))
+        self.assertTrue(policy.prejourney_progress.profession_filter_done)
+
+    def test_filter_dialog_maps_warrior_alias(self) -> None:
+        # docx 正文写「战士」, 游戏 UI 实际叫「突击者」(例: 缇莉雅)。
+        self.assertEqual(normalize_profession("战士"), "突击者")
+        self.assertEqual(normalize_profession("突击者"), "突击者")
+        self.assertEqual(normalize_profession("术士"), "术师")
+        self.assertEqual(normalize_profession("术师"), "术师")
+        self.assertEqual(normalize_profession(""), "")
+
+    def test_filter_dialog_closes_on_unknown_profession(self) -> None:
+        # 不认识的职业配置 normalize 后为空 → 钩子根本不会点漏斗; 若弹窗仍开着
+        # (误触/手点), 自愈行为是直接点确认关闭, 不乱选职业。
+        policy = TrainerPolicy()
+        state = _state(profession="魔法少女")
+        payload = CharacterFilter(
+            profession_buttons={"坦克": Rect(384, 590, 250, 100)},
+            confirm_button=Rect(1310, 1180, 260, 90),
+        )
+        action = policy.decide(state, Observation(Screen.CHARACTER_FILTER, 0.95, payload=payload))
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, Rect(1310, 1180, 260, 90))
+
+    def test_filter_dialog_pauses_when_button_missing(self) -> None:
+        # 配置职业有效, 但弹窗里没解析出对应按钮(区域缺) → pause 等人看, 不乱点。
+        policy = TrainerPolicy()
+        state = _state(profession="术师")
+        payload = CharacterFilter(
+            profession_buttons={"坦克": Rect(384, 590, 250, 100)},
+            confirm_button=Rect(1310, 1180, 260, 90),
+        )
+        action = policy.decide(state, Observation(Screen.CHARACTER_FILTER, 0.95, payload=payload))
+        self.assertEqual(action.kind, "pause")
+
+    def test_character_filter_signature(self) -> None:
+        self.assertTrue(
+            _has_character_filter_signature(
+                {
+                    "character_filter_anchor_title": "筛选",
+                    "character_filter_profession_row": "坦克 突击者 游侠 术师 刺客 辅助",
+                }
+            )
+        )
+        # 只有职业词没有筛选标题(角色列表本身也会出现职业词)→ 不认。
+        self.assertFalse(
+            _has_character_filter_signature(
+                {"character_filter_profession_row": "术师 刺客"}
+            )
+        )
 
 
 class ImprintIndexTest(unittest.TestCase):

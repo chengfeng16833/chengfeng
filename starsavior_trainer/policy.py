@@ -37,7 +37,7 @@ from starsavior_trainer.event_profiles import (
     event_profile_name_for_build,
     load_event_profile,
 )
-from starsavior_trainer.prejourney import PrejourneyProgress
+from starsavior_trainer.prejourney import PrejourneyProgress, maybe_open_profession_filter
 from starsavior_trainer.shop_profiles import load_shop_profile, shop_effect_worth_buying
 from starsavior_trainer.skill_profiles import (
     choose_skill_by_profile,
@@ -385,6 +385,10 @@ class TrainerPolicy:
         self._char_seen_names = None
 
     def decide_character_select(self, selection: CharacterSelect, state: GameState) -> Action:
+        # 赛前职业筛选钩子: 配置了职业且未筛选过 → 先点漏斗弹筛选窗(返回 None 则照旧)。
+        filter_action = maybe_open_profession_filter(selection, state, self)
+        if filter_action is not None:
+            return filter_action
         if state.desired_character:
             # Same-named characters now have multiple forms (普通 / ANOTHER / COSMIC),
             # told apart by the variant text under each row's class icon. Rank the

@@ -403,6 +403,18 @@
     "main_screen_menu_button": [2420, 50, 52, 50],
 
     "main_menu_panel_grid_text": [990, 445, 1510, 165],
-    "main_menu_panel_journey_entry": [2113, 450, 190, 155]
+    "main_menu_panel_journey_entry": [2113, 450, 190, 155],
+
+    "character_select_filter_button": [2430, 245, 85, 80],
+    "character_filter_anchor_title": [350, 290, 200, 85],
+    "character_filter_profession_row": [380, 580, 1800, 120],
+    "character_filter_prof_1": [384, 590, 250, 100],
+    "character_filter_prof_2": [672, 590, 250, 100],
+    "character_filter_prof_3": [960, 590, 250, 100],
+    "character_filter_prof_4": [1248, 590, 250, 100],
+    "character_filter_prof_5": [1536, 590, 250, 100],
+    "character_filter_prof_6": [1824, 590, 250, 100],
+    "character_filter_reset_button": [990, 1180, 260, 90],
+    "character_filter_confirm_button": [1310, 1180, 260, 90]
   }
 }

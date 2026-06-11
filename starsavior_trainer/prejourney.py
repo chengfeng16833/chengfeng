@@ -14,7 +14,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from starsavior_trainer.models import Action, GameState, MainMenuPanel, MainScreen, Observation
+from starsavior_trainer.models import (
+    Action,
+    CharacterFilter,
+    CharacterSelect,
+    GameState,
+    MainMenuPanel,
+    MainScreen,
+    Observation,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - 仅类型标注
     from starsavior_trainer.policy import TrainerPolicy
@@ -37,10 +45,28 @@ _DIFFICULTY_ALIASES = {
 #: 刻印筛选后的网格每排卡数(docx: 第4个=第1排第4个, 第12个=第3排第2个 → 每排5)。
 IMPRINT_GRID_COLUMNS = 5
 
+# 职业用语归一化: docx 正文写「战士/术士」, 游戏筛选弹窗 UI 实际是
+# 坦克/突击者/游侠/术师/刺客/辅助(见 screenshots/prejourney/image5)。
+_PROFESSION_ALIASES = {
+    "坦克": "坦克",
+    "突击者": "突击者",
+    "战士": "突击者",
+    "游侠": "游侠",
+    "术师": "术师",
+    "术士": "术师",
+    "刺客": "刺客",
+    "辅助": "辅助",
+}
+
 
 def normalize_difficulty(value: str) -> str:
     """难度文本 → easy/normal/hard; 空、default、不认识的文本 → default(不点难度)。"""
     return _DIFFICULTY_ALIASES.get((value or "").strip(), "default")
+
+
+def normalize_profession(value: str) -> str:
+    """职业文本 → 游戏 UI 用语; 空或不认识 → ""(不筛选)。"""
+    return _PROFESSION_ALIASES.get((value or "").strip(), "")
 
 
 def imprint_index_to_row_col(index: int) -> tuple[int, int]:
@@ -98,6 +124,51 @@ def decide_main_menu_panel(obs: Observation, state: GameState, policy: "TrainerP
     if not isinstance(obs.payload, MainMenuPanel):
         return Action("pause", None, "main menu panel missing journey entry observation")
     return Action("click", obs.payload.journey_entry, "main menu panel, enter journey")
+
+
+def maybe_open_profession_filter(
+    selection: CharacterSelect, state: GameState, policy: "TrainerPolicy"
+) -> Action | None:
+    """角色选择画面的前置钩子: 配置了职业且还没筛选 → 点漏斗按钮弹筛选窗。
+
+    返回 None 表示不需要筛选, 调用方继续走现有找角色逻辑。
+    """
+    pre = state.prejourney
+    if pre is None:
+        return None
+    profession = normalize_profession(getattr(pre, "profession", ""))
+    if not profession:
+        return None
+    progress = progress_of(policy)
+    if progress.profession_filter_done:
+        return None
+    if selection.filter_button is None:
+        # 区域没配置时不挡现有流程(找角色照旧, 只是少了筛选)。
+        return None
+    return Action("click", selection.filter_button, f"open profession filter for {profession}")
+
+
+def decide_character_filter(
+    obs: Observation, state: GameState, policy: "TrainerPolicy"
+) -> Action:
+    """筛选弹窗: 第一帧点配置职业, 第二帧点确认(两步, 防 OCR 抖动横跳)。"""
+    if not isinstance(obs.payload, CharacterFilter):
+        return Action("pause", None, "character filter missing payload")
+    pre = state.prejourney
+    profession = normalize_profession(getattr(pre, "profession", "") if pre else "")
+    if not profession:
+        # 没配职业却进了筛选窗(误触/手点) → 直接确认关闭, 不乱选。
+        return Action("click", obs.payload.confirm_button, "no profession configured, close filter")
+    progress = progress_of(policy)
+    if progress.extra.get("profession_clicked"):
+        progress.extra.pop("profession_clicked", None)
+        progress.profession_filter_done = True
+        return Action("click", obs.payload.confirm_button, f"confirm profession filter {profession}")
+    button = obs.payload.profession_buttons.get(profession)
+    if button is None:
+        return Action("pause", None, f"profession button {profession} not found in filter dialog")
+    progress.extra["profession_clicked"] = True
+    return Action("click", button, f"select profession filter {profession}")
 
 
 def decide_initial_with_difficulty(
