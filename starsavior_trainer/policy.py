@@ -37,7 +37,11 @@ from starsavior_trainer.event_profiles import (
     event_profile_name_for_build,
     load_event_profile,
 )
-from starsavior_trainer.prejourney import PrejourneyProgress, maybe_open_profession_filter
+from starsavior_trainer.prejourney import (
+    PrejourneyProgress,
+    decide_blessing_choice_imprint,
+    maybe_open_profession_filter,
+)
 from starsavior_trainer.shop_profiles import load_shop_profile, shop_effect_worth_buying
 from starsavior_trainer.skill_profiles import (
     choose_skill_by_profile,
@@ -463,12 +467,21 @@ class TrainerPolicy:
         empty_slots = [slot for slot in setup.slots if not slot.occupied]
         if empty_slots:
             first = sorted(empty_slots, key=lambda slot: slot.index)[0]
+            # 赛前刻印流程: 记住当前进的是哪个槽(选卡按槽各自的配置序号),
+            # 并重置上一个槽留下的筛选阶段。没配 prejourney 时这记录无人消费。
+            self.prejourney_progress.extra["current_imprint_slot"] = first.index
+            self.prejourney_progress.extra.pop("imprint_stage", None)
             return Action("click", first.target, f"open blessing slot {first.index}")
         if setup.can_confirm:
             return Action("click", setup.confirm_button, "all blessing slots filled, confirm")
         return Action("pause", None, "all blessing slots filled but confirm is disabled")
 
     def decide_blessing_choice(self, choice: BlessingChoice, state: GameState) -> Action:
+        # 赛前刻印筛选流程钩子(数值筛选→属性筛选→按配置序号选卡); 返回 None 时
+        # (无 prejourney 配置/筛选区域未配置)走下面的旧「选最高值祝福」逻辑。
+        imprint_action = decide_blessing_choice_imprint(choice, state, self)
+        if imprint_action is not None:
+            return imprint_action
         # Two-step confirm: we clicked a blessing last frame — confirm it now instead
         # of re-picking. Same-value cards are indistinguishable by selected_name (OCR),
         # and the sub-blessing count flickers frame-to-frame, so the old "confirm when

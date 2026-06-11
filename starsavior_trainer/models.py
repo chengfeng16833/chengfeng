@@ -33,9 +33,10 @@ class Screen(str, Enum):
     # 主界面菜单栏面板(付费商店/主线商店/作战/旅程…图标网格)。注意与 GAME_MENU
     # (局内误触的 菜单+观测 弹窗)是两个不同画面。
     MAIN_MENU_PANEL = "main_menu_panel"
-    # 角色选择的筛选弹窗(职业/属性/救援者阶级 三行 + 重置/确认)。点漏斗按钮弹出,
-    # 用职业筛选解决重名角色(docx: 战士=UI里的「突击者」)。
-    CHARACTER_FILTER = "character_filter"
+    # 通用「筛选」弹窗(职业行/能力值祝福属性行/救援者区段 + 重置/确认, 可滚动)。
+    # 同一个 UI 组件出现在两处: 角色选择点漏斗(选职业, docx: 战士=UI「突击者」),
+    # 刻印操作点属性筛选(选 力量/体力/韧性 等)。decide 按赛前进度决定点什么。
+    FILTER_DIALOG = "filter_dialog"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or
@@ -204,12 +205,17 @@ class CharacterSelect:
 
 
 @dataclass(frozen=True)
-class CharacterFilter:
-    """角色筛选弹窗 payload: 职业按钮(UI 用语: 坦克/突击者/游侠/术师/刺客/辅助)。"""
+class FilterDialog:
+    """通用筛选弹窗 payload。
+
+    职业按钮(UI 用语: 坦克/突击者/游侠/术师/刺客/辅助)用于角色选择;
+    属性按钮(力量/体力/韧性/专注/保护)用于刻印操作的属性筛选。
+    """
 
     profession_buttons: dict[str, Rect]
     confirm_button: Rect
     reset_button: Rect | None = None
+    attribute_buttons: dict[str, Rect] | None = None
 
 
 @dataclass(frozen=True)
@@ -243,6 +249,16 @@ class BlessingChoice:
     confirm_button: Rect | None = None
     selected_name: str | None = None
     detail_sub_blessing_count: int = 0
+    # ---- 赛前刻印筛选流程(docs/prejourney-flow.md 5.1)新增, 全部可缺省 ----
+    # 顶部「数值筛选」下拉入口与「属性筛选」按钮。
+    value_filter_button: Rect | None = None
+    attr_filter_button: Rect | None = None
+    # 数值筛选下拉展开时「能力值领域」项的位置; OCR 没读到下拉 → None(=没展开)。
+    value_dropdown_ability_item: Rect | None = None
+    # 筛选后网格(每排 5 个)的第 1 排第 1 卡位置与行列步长, 用于按序号点卡。
+    grid_origin: Rect | None = None
+    grid_step_x: int = 0
+    grid_step_y: int = 0
 
 
 @dataclass(frozen=True)

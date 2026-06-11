@@ -18,10 +18,10 @@ from __future__ import annotations
 
 from starsavior_trainer.classifier import (
     _has_battle_signature,
-    _has_character_filter_signature,
     _has_commission_select_signature,
     _has_dialogue_signature,
     _has_event_choice_signature,
+    _has_filter_dialog_signature,
     _has_game_menu_signature,
     _has_initial_signature,
     _has_main_menu_panel_signature,
@@ -35,7 +35,7 @@ from starsavior_trainer.classifier import (
     _has_training_select_signature,
 )
 from starsavior_trainer.prejourney import (
-    decide_character_filter,
+    decide_filter_dialog,
     decide_initial_with_difficulty,
     decide_main_menu_panel,
     decide_main_screen,
@@ -75,7 +75,7 @@ from starsavior_trainer.screen_reader import (
     parse_dialogue_scene,
     parse_event_choice,
     parse_event_fast_forward_setting,
-    parse_character_filter,
+    parse_filter_dialog,
     parse_journey_start,
     parse_main_menu_panel,
     parse_main_screen,
@@ -408,12 +408,12 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         anchor_fn=_has_main_screen_signature, anchor_confidence=1.0,
         parse_fn=parse_main_screen, ocr_prefixes=["main_screen"],
     ),
-    # 筛选弹窗覆盖在角色选择上层 —— priority=1 抢在 CHARACTER_SELECT 标题锚之前,
-    # 否则弹窗开着时还会被认成角色选择画面去点列表(点不到, 弹窗挡着)。
-    Screen.CHARACTER_FILTER: DelegatingScreenHandler(
-        Screen.CHARACTER_FILTER, decide_character_filter, priority=1,
-        anchor_fn=_has_character_filter_signature, anchor_confidence=1.0,
-        parse_fn=parse_character_filter, ocr_prefixes=["character_filter"],
+    # 筛选弹窗覆盖在角色选择/刻印操作上层 —— priority=1 抢在底层画面标题锚之前,
+    # 否则弹窗开着时还会被认成底层画面去点列表(点不到, 弹窗挡着)。
+    Screen.FILTER_DIALOG: DelegatingScreenHandler(
+        Screen.FILTER_DIALOG, decide_filter_dialog, priority=1,
+        anchor_fn=_has_filter_dialog_signature, anchor_confidence=1.0,
+        parse_fn=parse_filter_dialog, ocr_prefixes=["filter_dialog"],
     ),
     Screen.MAIN_MENU_PANEL: DelegatingScreenHandler(
         Screen.MAIN_MENU_PANEL, decide_main_menu_panel, priority=12,

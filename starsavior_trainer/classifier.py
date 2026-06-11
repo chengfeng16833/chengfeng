@@ -54,9 +54,9 @@ _FAST_ANCHORS: tuple[str, ...] = (
     # 赛前流程入口: 游戏主界面(左侧菜单竖排)与主界面菜单栏(图标网格行)。
     "main_screen_menu_column",
     "main_menu_panel_grid_text",
-    # 角色筛选弹窗(覆盖在角色选择上, 必须先于 CHARACTER_SELECT 的标题锚命中)。
-    "character_filter_anchor_title",
-    "character_filter_profession_row",
+    # 通用筛选弹窗(覆盖在角色选择/刻印操作上, 必须先于底层画面的标题锚命中)。
+    "filter_dialog_anchor_title",
+    "filter_dialog_profession_row",
 )
 
 
@@ -373,7 +373,7 @@ def classify_by_filename(path: str | Path) -> Observation:
 ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
     Screen.MAIN_SCREEN: ["main_screen_menu_column"],
     Screen.MAIN_MENU_PANEL: ["main_menu_panel_grid_text"],
-    Screen.CHARACTER_FILTER: ["character_filter_anchor_title", "character_filter_profession_row"],
+    Screen.FILTER_DIALOG: ["filter_dialog_anchor_title", "filter_dialog_profession_row"],
     Screen.INITIAL: ["route_select_anchor_title", "route_select_route_title", "start_button"],
     Screen.CHARACTER_SELECT: ["character_select_anchor_title"],
     Screen.BLESSING_SETUP: ["blessing_setup_anchor_title"],
@@ -714,11 +714,12 @@ def _has_main_menu_panel_signature(anchors: dict[str, str]) -> bool:
     return any(word in grid for word in ("付费商店", "主线商店", "作战", "酒馆", "培养"))
 
 
-def _has_character_filter_signature(anchors: dict[str, str]) -> bool:
-    # 角色筛选弹窗: 左上「筛选」标题 + 职业行任一职业词。两者都要 —— 角色列表
-    # 本身也会 OCR 出职业词, 单靠职业词会把普通角色选择误判成筛选弹窗。
-    title = anchors.get("character_filter_anchor_title", "")
-    row = anchors.get("character_filter_profession_row", "")
+def _has_filter_dialog_signature(anchors: dict[str, str]) -> bool:
+    # 通用「筛选」弹窗(角色选择的职业筛选 / 刻印操作的属性筛选, 同一 UI 组件):
+    # 左上「筛选」标题 + 职业行任一职业词。两者都要 —— 角色列表本身也会 OCR 出
+    # 职业词, 单靠职业词会把普通角色选择误判成筛选弹窗。
+    title = anchors.get("filter_dialog_anchor_title", "")
+    row = anchors.get("filter_dialog_profession_row", "")
     if "筛选" not in title:
         return False
     return any(word in row for word in ("坦克", "突击者", "游侠", "术师", "刺客", "辅助"))

@@ -15,9 +15,9 @@ from starsavior_trainer.models import (
     BlessingOption,
     BlessingSetup,
     BlessingSlot,
-    CharacterFilter,
     CharacterOption,
     CharacterSelect,
+    FilterDialog,
     ConfirmDialog,
     CommissionChoice,
     CommissionOption,
@@ -594,6 +594,14 @@ def parse_blessing_choice(
                 )
                 break
 
+    # 赛前刻印筛选流程的附加观察(区域未配置时全为 None/0, 不影响旧逻辑)。
+    dropdown_rect = profile.regions.get("blessing_value_dropdown_ability")
+    dropdown_text = texts.get("blessing_value_dropdown_ability", "")
+    dropdown_open = dropdown_rect is not None and contains_any_text(dropdown_text, ("能力值", "领域"))
+    cell_11 = profile.regions.get("blessing_grid_cell_1_1")
+    cell_12 = profile.regions.get("blessing_grid_cell_1_2")
+    cell_21 = profile.regions.get("blessing_grid_cell_2_1")
+
     return BlessingChoice(
         options=options,
         confirm_button=profile.regions.get("blessing_choice_confirm_button"),
@@ -603,6 +611,12 @@ def parse_blessing_choice(
         if selected_card_index is not None
         else None,
         detail_sub_blessing_count=selected_sub_blessing_count,
+        value_filter_button=profile.regions.get("blessing_value_filter_button"),
+        attr_filter_button=profile.regions.get("blessing_attr_filter_button"),
+        value_dropdown_ability_item=dropdown_rect if dropdown_open else None,
+        grid_origin=cell_11,
+        grid_step_x=(cell_12.x - cell_11.x) if (cell_11 and cell_12) else 0,
+        grid_step_y=(cell_21.y - cell_11.y) if (cell_11 and cell_21) else 0,
     )
 
 
@@ -625,27 +639,34 @@ def _parse_detail_panel_selection(texts: dict[str, str]) -> tuple[str, int] | No
 
 
 _FILTER_PROFESSION_ORDER = ("坦克", "突击者", "游侠", "术师", "刺客", "辅助")
+_FILTER_ATTRIBUTE_ORDER = ("力量", "体力", "韧性", "专注", "保护")
 
 
-def parse_character_filter(
+def parse_filter_dialog(
     region_texts: Iterable[RegionText],
     profile: RegionProfile,
-) -> CharacterFilter | None:
-    """角色筛选弹窗: 六个职业按钮(固定顺序对应 prof_1..prof_6 区域)+ 确认。"""
-    confirm_button = profile.regions.get("character_filter_confirm_button")
+) -> FilterDialog | None:
+    """通用筛选弹窗: 职业按钮 prof_1..6 + 属性按钮 attr_1..5(固定顺序)+ 确认。"""
+    confirm_button = profile.regions.get("filter_dialog_confirm_button")
     if confirm_button is None:
         return None
-    buttons: dict[str, Rect] = {}
+    professions: dict[str, Rect] = {}
     for index, name in enumerate(_FILTER_PROFESSION_ORDER, start=1):
-        rect = profile.regions.get(f"character_filter_prof_{index}")
+        rect = profile.regions.get(f"filter_dialog_prof_{index}")
         if rect is not None:
-            buttons[name] = rect
-    if not buttons:
+            professions[name] = rect
+    attributes: dict[str, Rect] = {}
+    for index, name in enumerate(_FILTER_ATTRIBUTE_ORDER, start=1):
+        rect = profile.regions.get(f"filter_dialog_attr_{index}")
+        if rect is not None:
+            attributes[name] = rect
+    if not professions and not attributes:
         return None
-    return CharacterFilter(
-        profession_buttons=buttons,
+    return FilterDialog(
+        profession_buttons=professions,
         confirm_button=confirm_button,
-        reset_button=profile.regions.get("character_filter_reset_button"),
+        reset_button=profile.regions.get("filter_dialog_reset_button"),
+        attribute_buttons=attributes or None,
     )
 
 

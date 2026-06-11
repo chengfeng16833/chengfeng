@@ -9,14 +9,15 @@
 import unittest
 
 from starsavior_trainer.classifier import (
-    _has_character_filter_signature,
+    _has_filter_dialog_signature,
     _has_main_menu_panel_signature,
     _has_main_screen_signature,
 )
 from starsavior_trainer.models import (
-    CharacterFilter,
+    BlessingChoice,
     CharacterOption,
     CharacterSelect,
+    FilterDialog,
     GameState,
     MainMenuPanel,
     MainScreen,
@@ -200,14 +201,14 @@ class ProfessionFilterTest(unittest.TestCase):
     def test_filter_dialog_clicks_profession_then_confirm(self) -> None:
         policy = TrainerPolicy()
         state = _state(profession="术师")
-        payload = CharacterFilter(
+        payload = FilterDialog(
             profession_buttons={
                 "坦克": Rect(384, 590, 250, 100),
                 "术师": Rect(1248, 590, 250, 100),
             },
             confirm_button=Rect(1310, 1180, 260, 90),
         )
-        obs = Observation(Screen.CHARACTER_FILTER, 0.95, payload=payload)
+        obs = Observation(Screen.FILTER_DIALOG, 0.95, payload=payload)
 
         first = policy.decide(state, obs)
         self.assertEqual(first.target, Rect(1248, 590, 250, 100))
@@ -229,11 +230,11 @@ class ProfessionFilterTest(unittest.TestCase):
         # (误触/手点), 自愈行为是直接点确认关闭, 不乱选职业。
         policy = TrainerPolicy()
         state = _state(profession="魔法少女")
-        payload = CharacterFilter(
+        payload = FilterDialog(
             profession_buttons={"坦克": Rect(384, 590, 250, 100)},
             confirm_button=Rect(1310, 1180, 260, 90),
         )
-        action = policy.decide(state, Observation(Screen.CHARACTER_FILTER, 0.95, payload=payload))
+        action = policy.decide(state, Observation(Screen.FILTER_DIALOG, 0.95, payload=payload))
         self.assertEqual(action.kind, "click")
         self.assertEqual(action.target, Rect(1310, 1180, 260, 90))
 
@@ -241,28 +242,114 @@ class ProfessionFilterTest(unittest.TestCase):
         # 配置职业有效, 但弹窗里没解析出对应按钮(区域缺) → pause 等人看, 不乱点。
         policy = TrainerPolicy()
         state = _state(profession="术师")
-        payload = CharacterFilter(
+        payload = FilterDialog(
             profession_buttons={"坦克": Rect(384, 590, 250, 100)},
             confirm_button=Rect(1310, 1180, 260, 90),
         )
-        action = policy.decide(state, Observation(Screen.CHARACTER_FILTER, 0.95, payload=payload))
+        action = policy.decide(state, Observation(Screen.FILTER_DIALOG, 0.95, payload=payload))
         self.assertEqual(action.kind, "pause")
 
     def test_character_filter_signature(self) -> None:
         self.assertTrue(
-            _has_character_filter_signature(
+            _has_filter_dialog_signature(
                 {
-                    "character_filter_anchor_title": "筛选",
-                    "character_filter_profession_row": "坦克 突击者 游侠 术师 刺客 辅助",
+                    "filter_dialog_anchor_title": "筛选",
+                    "filter_dialog_profession_row": "坦克 突击者 游侠 术师 刺客 辅助",
                 }
             )
         )
         # 只有职业词没有筛选标题(角色列表本身也会出现职业词)→ 不认。
         self.assertFalse(
-            _has_character_filter_signature(
-                {"character_filter_profession_row": "术师 刺客"}
+            _has_filter_dialog_signature(
+                {"filter_dialog_profession_row": "术师 刺客"}
             )
         )
+
+
+def _blessing_choice(dropdown_open: bool = False) -> BlessingChoice:
+    return BlessingChoice(
+        options=[],
+        confirm_button=Rect(2210, 1310, 250, 90),
+        value_filter_button=Rect(1090, 195, 250, 90),
+        attr_filter_button=Rect(1380, 195, 130, 90),
+        value_dropdown_ability_item=Rect(1310, 400, 260, 45) if dropdown_open else None,
+        grid_origin=Rect(224, 480, 300, 220),
+        grid_step_x=320,
+        grid_step_y=272,
+    )
+
+
+class ImprintFlowTest(unittest.TestCase):
+    """刻印操作流程: 数值筛选→能力值领域→属性筛选→(弹窗选属性)→按序号点卡→确认。"""
+
+    def test_full_imprint_flow_for_slot_2(self) -> None:
+        policy = TrainerPolicy()
+        # 模拟 BLESSING_SETUP 点开了槽 2(由 decide_blessing_setup 记录)。
+        policy.prejourney_progress.extra["current_imprint_slot"] = 2
+        state = _state(profession="术师", imprint_slot_2_index=12)
+
+        # 1) 点数值筛选入口。
+        a1 = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice()))
+        self.assertEqual(a1.target, Rect(1090, 195, 250, 90))
+
+        # 2) 下拉展开 → 点「能力值领域」。
+        a2 = policy.decide(
+            state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice(dropdown_open=True))
+        )
+        self.assertEqual(a2.target, Rect(1310, 400, 260, 45))
+
+        # 3) 点属性筛选按钮(弹出筛选弹窗)。
+        a3 = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice()))
+        self.assertEqual(a3.target, Rect(1380, 195, 130, 90))
+
+        # 4) 筛选弹窗(FILTER_DIALOG)被分类出来: 选属性 → 确认。术师→力量。
+        dialog = FilterDialog(
+            profession_buttons={"术师": Rect(1248, 590, 250, 100)},
+            confirm_button=Rect(1310, 1180, 260, 90),
+            attribute_buttons={"力量": Rect(384, 750, 250, 95), "体力": Rect(672, 750, 250, 95)},
+        )
+        a4 = policy.decide(state, Observation(Screen.FILTER_DIALOG, 0.95, payload=dialog))
+        self.assertEqual(a4.target, Rect(384, 750, 250, 95))
+        a5 = policy.decide(state, Observation(Screen.FILTER_DIALOG, 0.95, payload=dialog))
+        self.assertEqual(a5.target, Rect(1310, 1180, 260, 90))
+
+        # 5) 回到刻印网格: 槽 2 配置第 12 个 → 第 3 排第 2 个。
+        a6 = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice()))
+        self.assertEqual(a6.target, Rect(224 + 320, 480 + 2 * 272, 300, 220))
+        self.assertIn("#12", a6.reason)
+
+        # 6) 确认选卡, 流程阶段清空(回 BLESSING_SETUP 后下一个槽重新来)。
+        a7 = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice()))
+        self.assertEqual(a7.target, Rect(2210, 1310, 250, 90))
+        self.assertNotIn("imprint_stage", policy.prejourney_progress.extra)
+
+    def test_no_prejourney_keeps_old_blessing_logic(self) -> None:
+        # 不带 prejourney 时, BLESSING_CHOICE 走旧「选最高值祝福」逻辑(回归)。
+        policy = TrainerPolicy()
+        action = policy.decide(
+            GameState(), Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice())
+        )
+        # 旧逻辑: 没有任何属性匹配选项 → pause(不是点筛选按钮)。
+        self.assertEqual(action.kind, "pause")
+
+    def test_blessing_setup_records_slot_and_resets_stage(self) -> None:
+        from starsavior_trainer.models import BlessingSetup, BlessingSlot
+
+        policy = TrainerPolicy()
+        policy.prejourney_progress.extra["imprint_stage"] = "filtered"
+        setup = BlessingSetup(
+            slots=[
+                BlessingSlot(index=1, occupied=True, target=Rect(1200, 600, 160, 160)),
+                BlessingSlot(index=2, occupied=False, target=Rect(2050, 380, 160, 160)),
+            ],
+            confirm_button=Rect(2280, 1300, 240, 80),
+            auto_equip_button=Rect(2000, 1300, 240, 80),
+            can_confirm=False,
+        )
+        action = policy.decide_blessing_setup(setup)
+        self.assertEqual(action.target, Rect(2050, 380, 160, 160))
+        self.assertEqual(policy.prejourney_progress.extra["current_imprint_slot"], 2)
+        self.assertNotIn("imprint_stage", policy.prejourney_progress.extra)
 
 
 class ImprintIndexTest(unittest.TestCase):

@@ -406,15 +406,27 @@
     "main_menu_panel_journey_entry": [2113, 450, 190, 155],
 
     "character_select_filter_button": [2430, 245, 85, 80],
-    "character_filter_anchor_title": [350, 290, 200, 85],
-    "character_filter_profession_row": [380, 580, 1800, 120],
-    "character_filter_prof_1": [384, 590, 250, 100],
-    "character_filter_prof_2": [672, 590, 250, 100],
-    "character_filter_prof_3": [960, 590, 250, 100],
-    "character_filter_prof_4": [1248, 590, 250, 100],
-    "character_filter_prof_5": [1536, 590, 250, 100],
-    "character_filter_prof_6": [1824, 590, 250, 100],
-    "character_filter_reset_button": [990, 1180, 260, 90],
-    "character_filter_confirm_button": [1310, 1180, 260, 90]
+    "filter_dialog_anchor_title": [350, 290, 200, 85],
+    "filter_dialog_profession_row": [380, 580, 1800, 120],
+    "filter_dialog_prof_1": [384, 590, 250, 100],
+    "filter_dialog_prof_2": [672, 590, 250, 100],
+    "filter_dialog_prof_3": [960, 590, 250, 100],
+    "filter_dialog_prof_4": [1248, 590, 250, 100],
+    "filter_dialog_prof_5": [1536, 590, 250, 100],
+    "filter_dialog_prof_6": [1824, 590, 250, 100],
+    "filter_dialog_attr_1": [384, 750, 250, 95],
+    "filter_dialog_attr_2": [672, 750, 250, 95],
+    "filter_dialog_attr_3": [960, 750, 250, 95],
+    "filter_dialog_attr_4": [1248, 750, 250, 95],
+    "filter_dialog_attr_5": [1536, 750, 250, 95],
+    "filter_dialog_reset_button": [990, 1180, 260, 90],
+    "filter_dialog_confirm_button": [1310, 1180, 260, 90],
+
+    "blessing_value_filter_button": [1090, 195, 250, 90],
+    "blessing_value_dropdown_ability": [1310, 400, 260, 45],
+    "blessing_attr_filter_button": [1380, 195, 130, 90],
+    "blessing_grid_cell_1_1": [224, 480, 300, 220],
+    "blessing_grid_cell_1_2": [544, 480, 300, 220],
+    "blessing_grid_cell_2_1": [224, 752, 300, 220]
   }
 }

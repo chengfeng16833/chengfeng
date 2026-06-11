@@ -16,12 +16,14 @@ from typing import TYPE_CHECKING
 
 from starsavior_trainer.models import (
     Action,
-    CharacterFilter,
+    BlessingChoice,
     CharacterSelect,
+    FilterDialog,
     GameState,
     MainMenuPanel,
     MainScreen,
     Observation,
+    Rect,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - 仅类型标注
@@ -148,27 +150,135 @@ def maybe_open_profession_filter(
     return Action("click", selection.filter_button, f"open profession filter for {profession}")
 
 
-def decide_character_filter(
+def decide_filter_dialog(
     obs: Observation, state: GameState, policy: "TrainerPolicy"
 ) -> Action:
-    """筛选弹窗: 第一帧点配置职业, 第二帧点确认(两步, 防 OCR 抖动横跳)。"""
-    if not isinstance(obs.payload, CharacterFilter):
-        return Action("pause", None, "character filter missing payload")
+    """通用「筛选」弹窗: 按赛前进度决定点职业(角色选择)还是点属性(刻印)。
+
+    两步式: 第一帧点目标按钮, 第二帧点确认(防 OCR 抖动横跳)。
+    没有任何待办筛选时(误触/手点开的)直接确认关闭, 不乱选。
+    """
+    if not isinstance(obs.payload, FilterDialog):
+        return Action("pause", None, "filter dialog missing payload")
+    payload = obs.payload
     pre = state.prejourney
-    profession = normalize_profession(getattr(pre, "profession", "") if pre else "")
-    if not profession:
-        # 没配职业却进了筛选窗(误触/手点) → 直接确认关闭, 不乱选。
-        return Action("click", obs.payload.confirm_button, "no profession configured, close filter")
     progress = progress_of(policy)
-    if progress.extra.get("profession_clicked"):
-        progress.extra.pop("profession_clicked", None)
-        progress.profession_filter_done = True
-        return Action("click", obs.payload.confirm_button, f"confirm profession filter {profession}")
-    button = obs.payload.profession_buttons.get(profession)
-    if button is None:
-        return Action("pause", None, f"profession button {profession} not found in filter dialog")
-    progress.extra["profession_clicked"] = True
-    return Action("click", button, f"select profession filter {profession}")
+
+    # 刻印属性筛选阶段(由 BLESSING_CHOICE 钩子点开属性筛选后进入)。
+    if progress.extra.get("imprint_stage") == "attr_dialog":
+        attribute = _imprint_attribute(pre)
+        if progress.extra.get("attr_clicked"):
+            progress.extra.pop("attr_clicked", None)
+            progress.extra["imprint_stage"] = "filtered"
+            return Action("click", payload.confirm_button, f"confirm imprint attribute filter {attribute}")
+        button = (payload.attribute_buttons or {}).get(attribute)
+        if button is None:
+            return Action("pause", None, f"attribute button {attribute} not found in filter dialog")
+        progress.extra["attr_clicked"] = True
+        return Action("click", button, f"select imprint attribute filter {attribute}")
+
+    # 角色选择的职业筛选阶段。
+    profession = normalize_profession(getattr(pre, "profession", "") if pre else "")
+    if profession and not progress.profession_filter_done:
+        if progress.extra.get("profession_clicked"):
+            progress.extra.pop("profession_clicked", None)
+            progress.profession_filter_done = True
+            return Action("click", payload.confirm_button, f"confirm profession filter {profession}")
+        button = payload.profession_buttons.get(profession)
+        if button is None:
+            return Action("pause", None, f"profession button {profession} not found in filter dialog")
+        progress.extra["profession_clicked"] = True
+        return Action("click", button, f"select profession filter {profession}")
+
+    return Action("click", payload.confirm_button, "no pending filter step, close dialog")
+
+
+def _imprint_attribute(pre: object | None) -> str:
+    """刻印属性: 职业→属性映射(辅助/坦克→体力, 艾黛→韧性, 其余→力量)。
+
+    优先用 PreJourneyConfig.imprint_attribute()(源头实现), 拿不到时回退力量。
+    """
+    method = getattr(pre, "imprint_attribute", None)
+    if callable(method):
+        return method()
+    return "力量"
+
+
+def decide_blessing_choice_imprint(
+    choice: BlessingChoice, state: GameState, policy: "TrainerPolicy"
+) -> Action | None:
+    """刻印操作界面的赛前筛选流程钩子(docs/prejourney-flow.md 5.1)。
+
+    返回 None = 不适用(无赛前配置/区域缺失), 调用方走旧「选最高值祝福」逻辑。
+    流程: 点数值筛选 → 下拉选「能力值领域」 → 点属性筛选 → (FILTER_DIALOG 处理
+    属性弹窗) → 筛选完按配置序号点卡 → 确认。
+    """
+    pre = state.prejourney
+    if pre is None:
+        return None
+    progress = progress_of(policy)
+    stage = progress.extra.get("imprint_stage")
+
+    # 下拉展开时优先处理(OCR 实际看到「能力值领域」项, 比 stage 记忆更可信)。
+    if choice.value_dropdown_ability_item is not None:
+        progress.extra["imprint_stage"] = "value_filtered"
+        return Action(
+            "click", choice.value_dropdown_ability_item, "imprint: choose 能力值领域 in value dropdown"
+        )
+
+    if stage is None:
+        if choice.value_filter_button is None:
+            return None  # 区域未配置, 不挡旧逻辑。
+        progress.extra["imprint_stage"] = "value_dropdown"
+        return Action("click", choice.value_filter_button, "imprint: open value filter dropdown")
+
+    if stage == "value_dropdown":
+        # 点过数值筛选但这帧没读到下拉(OCR 抖动/动画) → 再点一次入口。
+        if choice.value_filter_button is not None:
+            return Action("click", choice.value_filter_button, "imprint: reopen value filter dropdown")
+        return Action("pause", None, "imprint: value dropdown not visible")
+
+    if stage == "value_filtered":
+        if choice.attr_filter_button is None:
+            return Action("pause", None, "imprint: attr filter button region missing")
+        progress.extra["imprint_stage"] = "attr_dialog"
+        return Action("click", choice.attr_filter_button, "imprint: open attribute filter dialog")
+
+    if stage == "attr_dialog":
+        # 属性弹窗应被分类成 FILTER_DIALOG; 走到这里说明弹窗没认出来, 再点一次。
+        if choice.attr_filter_button is not None:
+            return Action("click", choice.attr_filter_button, "imprint: reopen attribute filter dialog")
+        return Action("pause", None, "imprint: attribute dialog not recognised")
+
+    if stage == "filtered":
+        slot = int(progress.extra.get("current_imprint_slot", 1))
+        index = int(getattr(pre, "imprint_slot_2_index", 1) if slot == 2 else getattr(pre, "imprint_slot_1_index", 1))
+        row, col = imprint_index_to_row_col(index)
+        cell = _grid_cell(choice, row, col)
+        if cell is None:
+            return Action("pause", None, "imprint: grid origin region missing")
+        progress.extra["imprint_stage"] = "card_clicked"
+        return Action("click", cell, f"imprint slot {slot}: pick card #{index} (row {row} col {col})")
+
+    if stage == "card_clicked":
+        if choice.confirm_button is None:
+            return Action("pause", None, "imprint: confirm button missing after card click")
+        progress.extra.pop("imprint_stage", None)
+        return Action("click", choice.confirm_button, "imprint: confirm chosen card")
+
+    return None
+
+
+def _grid_cell(choice: BlessingChoice, row: int, col: int) -> Rect | None:
+    if choice.grid_origin is None:
+        return None
+    origin = choice.grid_origin
+    return Rect(
+        origin.x + (col - 1) * choice.grid_step_x,
+        origin.y + (row - 1) * choice.grid_step_y,
+        origin.width,
+        origin.height,
+    )
 
 
 def decide_initial_with_difficulty(
