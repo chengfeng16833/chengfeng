@@ -422,12 +422,12 @@
     "filter_dialog_reset_button": [990, 1180, 260, 90],
     "filter_dialog_confirm_button": [1310, 1180, 260, 90],
 
-    "blessing_value_filter_button": [1090, 195, 250, 90],
-    "blessing_value_dropdown_ability": [1310, 400, 260, 45],
-    "blessing_attr_filter_button": [1380, 195, 130, 90],
-    "blessing_grid_cell_1_1": [224, 480, 300, 220],
-    "blessing_grid_cell_1_2": [544, 480, 300, 220],
-    "blessing_grid_cell_2_1": [224, 752, 300, 220],
+    "blessing_value_filter_button": [1310, 160, 340, 75],
+    "blessing_value_dropdown_ability": [1310, 300, 340, 65],
+    "blessing_attr_filter_button": [1670, 160, 110, 75],
+    "blessing_grid_cell_1_1": [490, 275, 290, 270],
+    "blessing_grid_cell_1_2": [807, 275, 290, 270],
+    "blessing_grid_cell_2_1": [490, 592, 290, 270],
 
     "journey_start_deck_dots": [1800, 940, 260, 40],
 

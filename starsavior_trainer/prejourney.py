@@ -170,7 +170,7 @@ def decide_filter_dialog(
 
     # 刻印属性筛选阶段(由 BLESSING_CHOICE 钩子点开属性筛选后进入)。
     if progress.extra.get("imprint_stage") == "attr_dialog":
-        attribute = _imprint_attribute(pre)
+        attribute = imprint_attribute_for(state, policy)
         if progress.extra.get("attr_clicked"):
             progress.extra.pop("attr_clicked", None)
             progress.extra["imprint_stage"] = "filtered"
@@ -197,29 +197,48 @@ def decide_filter_dialog(
     return Action("click", payload.confirm_button, "no pending filter step, close dialog")
 
 
-def _imprint_attribute(pre: object | None) -> str:
-    """刻印属性: 职业→属性映射(辅助/坦克→体力, 艾黛→韧性, 其余→力量)。
+# internal 属性键 → 游戏中文(协作守则术语表: power=力量 stamina=体力(生命)
+# guts=韧性(防御) wisdom=专注(命中) speed=保护(命抗))。
+_ATTR_INTERNAL_TO_CN = {
+    "power": "力量",
+    "stamina": "体力",
+    "guts": "韧性",
+    "wisdom": "专注",
+    "speed": "保护",
+}
 
-    优先用 PreJourneyConfig.imprint_attribute()(源头实现), 拿不到时回退力量。
+
+def imprint_attribute_for(state: GameState, policy: "TrainerPolicy") -> str:
+    """刻印筛选用的属性(中文), 按优先级:
+
+    1. 用户显式指定的祝福属性(desired_blessing_attribute, internal 键);
+    2. 赛前配置的职业映射(辅助/坦克→体力, 艾黛→韧性, 其余→力量);
+    3. 培养方向映射(power_focus→力量 等, 与旧选祝福逻辑同源)。
     """
-    method = getattr(pre, "imprint_attribute", None)
-    if callable(method):
-        return method()
-    return "力量"
+    desired = getattr(state, "desired_blessing_attribute", None)
+    if desired:
+        return _ATTR_INTERNAL_TO_CN.get(desired, "力量")
+    pre = state.prejourney
+    if pre is not None and str(getattr(pre, "profession", "") or "").strip():
+        method = getattr(pre, "imprint_attribute", None)
+        if callable(method):
+            return method()
+    internal = policy.config.blessing_attribute_by_profile.get(state.build_profile, "power")
+    return _ATTR_INTERNAL_TO_CN.get(internal, "力量")
 
 
 def decide_blessing_choice_imprint(
     choice: BlessingChoice, state: GameState, policy: "TrainerPolicy"
 ) -> Action | None:
-    """刻印操作界面的赛前筛选流程钩子(docs/prejourney-flow.md 5.1)。
+    """刻印操作界面的筛选选卡流程(docs/prejourney-flow.md 5.1)— 唯一主逻辑。
 
-    返回 None = 不适用(无赛前配置/区域缺失), 调用方走旧「选最高值祝福」逻辑。
-    流程: 点数值筛选 → 下拉选「能力值领域」 → 点属性筛选 → (FILTER_DIALOG 处理
-    属性弹窗) → 筛选完按配置序号点卡 → 确认。
+    2026-06-12 用户拍板: 本流程直接覆盖旧「选最高值祝福」逻辑, 不再以
+    --prejourney 区分。返回 None 仅当筛选区域未配置(其他分辨率 profile 的
+    兜底), 那时调用方才走旧逻辑。属性来源见 imprint_attribute_for。
+    流程: 数值模式(已是「能力值祝福」则跳过) → 属性筛选 → (FILTER_DIALOG
+    弹窗选属性) → 按配置序号点卡(默认第1张=该属性数值最高) → 确认。
     """
     pre = state.prejourney
-    if pre is None:
-        return None
     progress = progress_of(policy)
     stage = progress.extra.get("imprint_stage")
 
@@ -233,10 +252,19 @@ def decide_blessing_choice_imprint(
     if stage is None:
         if choice.value_filter_button is None:
             return None  # 区域未配置, 不挡旧逻辑。
+        if choice.value_filter_active:
+            # 下拉框已显示「能力值祝福」(游戏默认/记忆) → 数值模式已生效,
+            # 跳过点下拉直接进属性筛选(实机 2026-06 验证的常态路径)。
+            progress.extra["imprint_stage"] = "value_filtered"
+            return decide_blessing_choice_imprint(choice, state, policy)
         progress.extra["imprint_stage"] = "value_dropdown"
         return Action("click", choice.value_filter_button, "imprint: open value filter dropdown")
 
     if stage == "value_dropdown":
+        if choice.value_filter_active:
+            # 下拉收回且已是能力值模式(点开后游戏自动选中/本来就选着) → 继续。
+            progress.extra["imprint_stage"] = "value_filtered"
+            return decide_blessing_choice_imprint(choice, state, policy)
         # 点过数值筛选但这帧没读到下拉(OCR 抖动/动画) → 再点一次入口。
         if choice.value_filter_button is not None:
             return Action("click", choice.value_filter_button, "imprint: reopen value filter dropdown")

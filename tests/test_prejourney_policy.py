@@ -323,14 +323,49 @@ class ImprintFlowTest(unittest.TestCase):
         self.assertEqual(a7.target, Rect(2210, 1310, 250, 90))
         self.assertNotIn("imprint_stage", policy.prejourney_progress.extra)
 
-    def test_no_prejourney_keeps_old_blessing_logic(self) -> None:
-        # 不带 prejourney 时, BLESSING_CHOICE 走旧「选最高值祝福」逻辑(回归)。
+    def test_value_filter_active_skips_dropdown(self) -> None:
+        # 实机常态: 下拉框默认已显示「能力值祝福」→ 跳过点下拉, 直接点属性筛选。
+        from dataclasses import replace as dc_replace
+
+        policy = TrainerPolicy()
+        policy.prejourney_progress.extra["current_imprint_slot"] = 1
+        state = _state(profession="术师")
+        payload = dc_replace(_blessing_choice(), value_filter_active=True)
+
+        action = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=payload))
+        self.assertEqual(action.target, Rect(1380, 195, 130, 90))  # 直接属性筛选
+        self.assertEqual(policy.prejourney_progress.extra["imprint_stage"], "attr_dialog")
+
+    def test_imprint_flow_is_default_even_without_prejourney(self) -> None:
+        # 2026-06-12 拍板: 筛选流程是唯一主逻辑, 不带 prejourney 配置也走它。
         policy = TrainerPolicy()
         action = policy.decide(
             GameState(), Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice())
         )
-        # 旧逻辑: 没有任何属性匹配选项 → pause(不是点筛选按钮)。
+        self.assertEqual(action.target, Rect(1090, 195, 250, 90))  # 点数值筛选
+
+    def test_old_logic_only_when_regions_missing(self) -> None:
+        # 筛选区域未配置(其他分辨率 profile)→ 兜底回旧「选最高值祝福」逻辑。
+        policy = TrainerPolicy()
+        bare = BlessingChoice(options=[], confirm_button=Rect(2210, 1310, 250, 90))
+        action = policy.decide(GameState(), Observation(Screen.BLESSING_CHOICE, 0.95, payload=bare))
+        # 旧逻辑: 没有属性匹配选项 → pause。
         self.assertEqual(action.kind, "pause")
+
+    def test_attribute_falls_back_to_build_profile(self) -> None:
+        # 没配职业时按培养方向推属性: stamina_tank → 体力。
+        from starsavior_trainer.prejourney import imprint_attribute_for
+
+        policy = TrainerPolicy()
+        self.assertEqual(imprint_attribute_for(GameState(build_profile="stamina_tank"), policy), "体力")
+        self.assertEqual(imprint_attribute_for(GameState(build_profile="power_focus"), policy), "力量")
+        # 显式指定优先于一切。
+        self.assertEqual(
+            imprint_attribute_for(GameState(desired_blessing_attribute="guts"), policy), "韧性"
+        )
+        # 职业映射优先于培养方向。
+        state = _state(profession="辅助")
+        self.assertEqual(imprint_attribute_for(state, policy), "体力")
 
     def test_blessing_setup_records_slot_and_resets_stage(self) -> None:
         from starsavior_trainer.models import BlessingSetup, BlessingSlot

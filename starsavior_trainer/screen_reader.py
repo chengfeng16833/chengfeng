@@ -602,6 +602,10 @@ def parse_blessing_choice(
     dropdown_rect = profile.regions.get("blessing_value_dropdown_ability")
     dropdown_text = texts.get("blessing_value_dropdown_ability", "")
     dropdown_open = dropdown_rect is not None and contains_any_text(dropdown_text, ("能力值", "领域"))
+    # 下拉框收起状态已显示「能力值祝福」(新版 UI 文案; 旧 docx 叫「能力值领域」)
+    # → 数值模式已生效, decide 直接跳过点下拉。
+    value_filter_text = texts.get("blessing_value_filter_button", "")
+    value_filter_active = contains_any_text(value_filter_text, ("能力值",))
     cell_11 = profile.regions.get("blessing_grid_cell_1_1")
     cell_12 = profile.regions.get("blessing_grid_cell_1_2")
     cell_21 = profile.regions.get("blessing_grid_cell_2_1")
@@ -617,6 +621,7 @@ def parse_blessing_choice(
         detail_sub_blessing_count=selected_sub_blessing_count,
         value_filter_button=profile.regions.get("blessing_value_filter_button"),
         attr_filter_button=profile.regions.get("blessing_attr_filter_button"),
+        value_filter_active=value_filter_active,
         value_dropdown_ability_item=dropdown_rect if dropdown_open else None,
         grid_origin=cell_11,
         grid_step_x=(cell_12.x - cell_11.x) if (cell_11 and cell_12) else 0,

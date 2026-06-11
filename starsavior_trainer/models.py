@@ -260,6 +260,9 @@ class BlessingChoice:
     # 顶部「数值筛选」下拉入口与「属性筛选」按钮。
     value_filter_button: Rect | None = None
     attr_filter_button: Rect | None = None
+    # 下拉框当前已显示「能力值祝福/能力值领域」→ 数值模式已生效, 跳过点下拉
+    # (实机 2026-06: 游戏默认/记忆就是能力值祝福, 多数情况不用点)。
+    value_filter_active: bool = False
     # 数值筛选下拉展开时「能力值领域」项的位置; OCR 没读到下拉 → None(=没展开)。
     value_dropdown_ability_item: Rect | None = None
     # 筛选后网格(每排 5 个)的第 1 排第 1 卡位置与行列步长, 用于按序号点卡。
