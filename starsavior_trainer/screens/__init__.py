@@ -40,7 +40,6 @@ from starsavior_trainer.classifier import (
 from starsavior_trainer.prejourney import (
     decide_filter_dialog,
     decide_initial_with_difficulty,
-    decide_journey_start_prejourney,
     decide_main_menu_panel,
     decide_main_screen,
     decide_support_card_detail,
@@ -134,10 +133,8 @@ def _decide_blessing_choice(obs, state, policy):
 def _decide_journey_start(obs, state, policy):
     if not isinstance(obs.payload, JourneyStart):
         return Action("pause", None, "journey start screen missing start button")
-    # 赛前钩子: 先切卡组/接好友卡(返回 None = 没有待办), 再走旧「点旅程起点」。
-    prejourney_action = decide_journey_start_prejourney(obs.payload, state, policy)
-    if prejourney_action is not None:
-        return prejourney_action
+    # 2026-06-12 用户拍板: 支援卡(卡组/好友卡)由用户人工配置, bot 不碰 ——
+    # 这个画面永远直接点「旅程起点」。SUPPORT_* 三画面保留识别仅作误入自愈。
     return policy.decide_journey_start(obs.payload)
 
 

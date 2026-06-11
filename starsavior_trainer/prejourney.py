@@ -20,7 +20,6 @@ from starsavior_trainer.models import (
     CharacterSelect,
     FilterDialog,
     GameState,
-    JourneyStart,
     MainMenuPanel,
     MainScreen,
     Observation,
@@ -191,45 +190,9 @@ def decide_blessing_choice_imprint(
 
 
 # ---------------------------------------------------------------------------
-# 支援卡(卡组切换 + 好友卡, docx 6/6.1/7)
+# 支援卡相关画面(2026-06-12 拍板: 卡组/好友卡由用户人工配置, bot 不主动进入;
+# 以下三画面的识别保留, 仅当误入时自愈退出)
 # ---------------------------------------------------------------------------
-
-
-def decide_journey_start_prejourney(
-    journey: JourneyStart, state: GameState, policy: "TrainerPolicy"
-) -> Action | None:
-    """支援卡界面(旅程起点)的赛前钩子: 先切卡组、再接好友卡, 然后让位旧逻辑。
-
-    返回 None = 没有赛前待办(或无配置), 调用方点「旅程起点」开跑。
-    """
-    pre = state.prejourney
-    if pre is None:
-        return None
-    progress = progress_of(policy)
-
-    # 1) 卡组切换: 圆点检测出当前卡组且与配置不一致 → 按方向点 < / >。
-    target_deck = int(getattr(pre, "support_deck", 1) or 1)
-    if 1 <= target_deck <= 5 and journey.current_deck is not None and journey.current_deck != target_deck:
-        if target_deck > journey.current_deck:
-            if journey.next_button is not None:
-                return Action(
-                    "click", journey.next_button,
-                    f"switch support deck {journey.current_deck} -> {target_deck} (next)",
-                )
-        elif journey.previous_button is not None:
-            return Action(
-                "click", journey.previous_button,
-                f"switch support deck {journey.current_deck} -> {target_deck} (previous)",
-            )
-
-    # 2) 好友卡: 配置了好友名且本局还没接 → 点最右卡位进支援卡选择界面。
-    friend = str(getattr(pre, "friend_support_name", "") or "").strip()
-    if friend and not progress.friend_card_done:
-        slots = journey.arcana_slots or []
-        if slots:
-            return Action("click", slots[-1], f"open support picker to borrow friend card ({friend})")
-
-    return None
 
 
 def decide_support_picker(obs: Observation, state: GameState, policy: "TrainerPolicy") -> Action:

@@ -356,49 +356,16 @@ class SupportDeckAndFriendTest(unittest.TestCase):
             next_button=Rect(2420, 620, 62, 92),
         )
 
-    def test_deck_switch_clicks_next_until_target(self) -> None:
+    def test_journey_start_always_clicked_regardless_of_config(self) -> None:
+        # 2026-06-12 拍板: 支援卡(卡组/好友卡)用户人工配置, bot 不碰 ——
+        # 无论配置什么, 这个画面永远直接点「旅程起点」。
         policy = TrainerPolicy()
-        state = _state(support_deck=4)
-        action = policy.decide(
-            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=2))
-        )
-        self.assertEqual(action.target, Rect(2420, 620, 62, 92))  # next
-        self.assertIn("2 -> 4", action.reason)
-
-    def test_deck_switch_clicks_previous_when_target_lower(self) -> None:
-        policy = TrainerPolicy()
-        state = _state(support_deck=1)
-        action = policy.decide(
-            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=3))
-        )
-        self.assertEqual(action.target, Rect(1340, 620, 62, 92))  # previous
-
-    def test_friend_card_entry_after_deck_ok(self) -> None:
-        policy = TrainerPolicy()
-        state = _state(support_deck=2, friend_support_name="B站老顾不烦")
-        action = policy.decide(
-            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=2))
-        )
-        # 卡组已对 → 点最右卡位进支援卡选择界面。
-        self.assertEqual(action.target, Rect(1400 + 4 * 200, 443, 180, 328))
-
-    def test_journey_start_clicked_when_nothing_pending(self) -> None:
-        policy = TrainerPolicy()
-        policy.prejourney_progress.friend_card_done = True
-        state = _state(support_deck=2, friend_support_name="B站老顾不烦")
-        action = policy.decide(
-            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=2))
-        )
-        self.assertEqual(action.target, Rect(1932, 1306, 535, 75))  # 旅程起点
-
-    def test_unknown_deck_skips_switch(self) -> None:
-        # 圆点检测不出 → 不乱点切换; 没有好友配置 → 直接旅程起点。
-        policy = TrainerPolicy()
-        state = _state(support_deck=4)
-        action = policy.decide(
-            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=None))
-        )
-        self.assertEqual(action.target, Rect(1932, 1306, 535, 75))
+        state = _state(support_deck=4, friend_support_name="B站老顾不烦")
+        for deck in (None, 2, 4):
+            action = policy.decide(
+                state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=deck))
+            )
+            self.assertEqual(action.target, Rect(1932, 1306, 535, 75))  # 旅程起点
 
     def test_support_picker_with_borrow_opens_friend_list(self) -> None:
         from starsavior_trainer.models import SupportPicker
