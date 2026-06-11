@@ -35,7 +35,12 @@ from starsavior_trainer.training_inspector import TrainingInspector
 from starsavior_trainer.shop_inspector import ShopInspector
 from starsavior_trainer.commission_inspector import CommissionInspector
 from starsavior_trainer.round_tracker import RoundTracker
-from starsavior_trainer.executor import DryRunExecutor, PyAutoGuiExecutor, map_action_to_rect
+from starsavior_trainer.executor import (
+    DryRunExecutor,
+    PyAutoGuiExecutor,
+    SendInputExecutor,
+    map_action_to_rect,
+)
 from starsavior_trainer.image_regions import crop_region
 from starsavior_trainer.logging_setup import get_logger
 from starsavior_trainer.models import (
@@ -253,6 +258,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--support-deck", type=int, default=1, help="1-based support deck number for setup.")
     parser.add_argument("--friend-support-name", default="", help="Friend support card name to search/select.")
+    parser.add_argument(
+        "--prejourney",
+        action="store_true",
+        help="启用赛前全流程自动化(主界面→难度→职业筛选→刻印→卡组/好友卡→进旅途)。"
+        "不开此开关时上述配置只记录不生效, 行为与旧版完全一致。",
+    )
+    parser.add_argument(
+        "--executor",
+        choices=("pyautogui", "sendinput"),
+        default="pyautogui",
+        help="真实点击的执行器: pyautogui(默认, 移动系统鼠标) / sendinput(Win32 SendInput, 点完还原光标)。",
+    )
     return parser
 
 
@@ -294,9 +311,21 @@ def main() -> None:
     training_inspector = TrainingInspector(max_fail_rate=policy.config.max_training_fail_rate)
     shop_inspector = ShopInspector()
     commission_inspector = CommissionInspector()
-    state = GameState(desired_character=args.character, desired_variant=args.variant, build_profile=args.build_profile)
+    state = GameState(
+        desired_character=args.character,
+        desired_variant=args.variant,
+        build_profile=args.build_profile,
+        # 只有显式 --prejourney 才把赛前配置塞进 state(钩子才会触发);
+        # 不开开关 = 旧行为, 赛前参数仅记录在日志里。
+        prejourney=prejourney_config if args.prejourney else None,
+    )
     round_tracker = RoundTracker()
-    executor = PyAutoGuiExecutor() if args.execute else DryRunExecutor()
+    if not args.execute:
+        executor = DryRunExecutor()
+    elif args.executor == "sendinput":
+        executor = SendInputExecutor()
+    else:
+        executor = PyAutoGuiExecutor()
     ocr = _create_ocr(args.use_paddle)
     blue_detector = BlueButtonDetector() if (args.blue_mode or args.hybrid_mode) else None
 
