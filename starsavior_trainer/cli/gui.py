@@ -49,6 +49,34 @@ CLASSIFY_MODES = (
 )
 
 
+def append_prejourney_args(
+    cmd: list[str],
+    *,
+    difficulty: str,
+    profession: str,
+    imprint_slot_1_index: str,
+    imprint_slot_2_index: str,
+    support_deck: str,
+    friend_support_name: str,
+) -> None:
+    cmd.extend(
+        [
+            "--difficulty",
+            difficulty,
+            "--profession",
+            profession,
+            "--imprint-slot-1-index",
+            imprint_slot_1_index,
+            "--imprint-slot-2-index",
+            imprint_slot_2_index,
+            "--support-deck",
+            support_deck,
+            "--friend-support-name",
+            friend_support_name,
+        ]
+    )
+
+
 def _list_region_profiles() -> list[str]:
     if not REGIONS_DIR.is_dir():
         return ["config/regions/2560x1440.json"]
@@ -183,24 +211,56 @@ class TrainerGui:
             tab, textvariable=self.build_profile, values=list(BUILD_PROFILES), width=16, state="readonly"
         ).grid(row=2, column=5, sticky="w", **pad)
 
-        ttk.Label(tab, text="识别模式:").grid(row=3, column=0, sticky="e", **pad)
+        ttk.Label(tab, text="旅途难度:").grid(row=3, column=0, sticky="e", **pad)
+        self.difficulty = tk.StringVar(value="default")
+        ttk.Entry(tab, textvariable=self.difficulty, width=12).grid(row=3, column=1, sticky="w", **pad)
+
+        ttk.Label(tab, text="职业:").grid(row=3, column=2, sticky="e", **pad)
+        self.profession = tk.StringVar(value="")
+        ttk.Combobox(
+            tab, textvariable=self.profession, values=["", "坦克", "辅助", "术师", "刺客", "战士", "游侠"], width=10
+        ).grid(row=3, column=3, sticky="w", **pad)
+
+        ttk.Label(tab, text="支援卡组:").grid(row=3, column=4, sticky="e", **pad)
+        self.support_deck = tk.StringVar(value="1")
+        ttk.Spinbox(tab, from_=1, to=5, increment=1, textvariable=self.support_deck, width=6).grid(
+            row=3, column=5, sticky="w", **pad
+        )
+
+        ttk.Label(tab, text="刻印1序号:").grid(row=4, column=0, sticky="e", **pad)
+        self.imprint_slot_1_index = tk.StringVar(value="1")
+        ttk.Spinbox(tab, from_=1, to=99, increment=1, textvariable=self.imprint_slot_1_index, width=6).grid(
+            row=4, column=1, sticky="w", **pad
+        )
+
+        ttk.Label(tab, text="刻印2序号:").grid(row=4, column=2, sticky="e", **pad)
+        self.imprint_slot_2_index = tk.StringVar(value="1")
+        ttk.Spinbox(tab, from_=1, to=99, increment=1, textvariable=self.imprint_slot_2_index, width=6).grid(
+            row=4, column=3, sticky="w", **pad
+        )
+
+        ttk.Label(tab, text="好友支援:").grid(row=4, column=4, sticky="e", **pad)
+        self.friend_support_name = tk.StringVar(value="")
+        ttk.Entry(tab, textvariable=self.friend_support_name, width=14).grid(row=4, column=5, sticky="w", **pad)
+
+        ttk.Label(tab, text="识别模式:").grid(row=5, column=0, sticky="e", **pad)
         self.mode_flag = tk.StringVar(value="--hybrid-mode")
         mode_frame = ttk.Frame(tab)
-        mode_frame.grid(row=3, column=1, columnspan=5, sticky="w", **pad)
+        mode_frame.grid(row=5, column=1, columnspan=5, sticky="w", **pad)
         for label, flag in CLASSIFY_MODES:
             ttk.Radiobutton(mode_frame, text=label, value=flag, variable=self.mode_flag).pack(side="left", padx=4)
 
         self.execute = tk.BooleanVar(value=False)
         self.verbose = tk.BooleanVar(value=True)
         ttk.Checkbutton(tab, text="执行点击 (取消=仅预演)", variable=self.execute).grid(
-            row=4, column=1, columnspan=3, sticky="w", **pad
+            row=6, column=1, columnspan=3, sticky="w", **pad
         )
         ttk.Checkbutton(tab, text="详细输出 (verbose)", variable=self.verbose).grid(
-            row=4, column=4, columnspan=2, sticky="w", **pad
+            row=6, column=4, columnspan=2, sticky="w", **pad
         )
 
         btns = ttk.Frame(tab)
-        btns.grid(row=5, column=0, columnspan=6, sticky="w", **pad)
+        btns.grid(row=7, column=0, columnspan=6, sticky="w", **pad)
         self._register_action(ttk.Button(btns, text="▶ 启动循环", command=self.start_loop)).pack(side="left", padx=4)
         self._register_action(ttk.Button(btns, text="列出窗口", command=self.list_windows)).pack(side="left", padx=4)
         tab.columnconfigure(1, weight=1)
@@ -489,6 +549,15 @@ class TrainerGui:
             "--interval", self.interval.get(),
             "--max-iterations", self.max_iter.get(),
             "--build-profile", self.build_profile.get(),
+        )
+        append_prejourney_args(
+            cmd,
+            difficulty=self.difficulty.get().strip() or "default",
+            profession=self.profession.get().strip(),
+            imprint_slot_1_index=self.imprint_slot_1_index.get().strip() or "1",
+            imprint_slot_2_index=self.imprint_slot_2_index.get().strip() or "1",
+            support_deck=self.support_deck.get().strip() or "1",
+            friend_support_name=self.friend_support_name.get().strip(),
         )
         if self.mode_flag.get():
             cmd.append(self.mode_flag.get())

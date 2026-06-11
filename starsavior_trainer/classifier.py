@@ -147,6 +147,8 @@ def classify_by_blue_button(
         if rect is None:
             continue
         try:
+            if screen == Screen.CONFIRM_DIALOG and not _has_confirm_dialog_panel(image, profile):
+                continue
             signal = detector.detect(crop_region(image, rect))
             if signal.name == "active_blue" and signal.confidence >= min_confidence:
                 return Observation(screen=screen, confidence=signal.confidence)
@@ -160,6 +162,25 @@ def classify_by_blue_button(
         return br_result
 
     return Observation(screen=Screen.UNKNOWN, confidence=0.0)
+
+
+def _has_confirm_dialog_panel(image: Image.Image, profile: RegionProfile) -> bool:
+    rect = profile.regions.get("confirm_dialog_panel")
+    if rect is None:
+        return False
+    try:
+        panel = crop_region(image, rect).convert("RGB")
+        pixel_data = panel.get_flattened_data() if hasattr(panel, "get_flattened_data") else panel.getdata()
+        pixels = list(pixel_data)
+    except Exception as e:
+        logger.debug(f"[_has_confirm_dialog_panel] panel detect failed: {e}")
+        return False
+    if not pixels:
+        return False
+    total = len(pixels)
+    bright_ratio = sum(1 for red, green, blue in pixels if red + green + blue >= 630) / total
+    mean_value = sum((red + green + blue) / 3 for red, green, blue in pixels) / total
+    return bright_ratio >= 0.75 and mean_value >= 200.0
 
 
 def _classify_bottom_right_group(

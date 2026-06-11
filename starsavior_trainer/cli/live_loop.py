@@ -58,6 +58,7 @@ from starsavior_trainer.models import (
 from starsavior_trainer.ocr import NoopOcrEngine, PaddleOcrEngine
 from starsavior_trainer.policy import TrainerPolicy, _is_iterable_of
 from starsavior_trainer.regions import load_region_profile, scale_region_profile, RegionProfile
+from starsavior_trainer.run_config import PreJourneyConfig
 from starsavior_trainer.screen_reader import (
     PostTrainingResult,
     RegionOcrReader,
@@ -213,7 +214,7 @@ def install_pause_hotkey(controller: PauseController, key: str = "f9") -> bool:
     return True
 
 
-def main() -> None:
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Starsavior live training loop.")
     parser.add_argument("--profile", default="config/regions/2560x1440.json", help="Region profile path.")
     parser.add_argument("--window-title", default="StarSavior", help="Game window title substring.")
@@ -236,7 +237,50 @@ def main() -> None:
         default="balanced",
         help="Build profile: balanced, power_focus, focus_focus, durability_focus, stamina_tank, protection_focus.",
     )
+    parser.add_argument("--difficulty", default="default", help="Journey difficulty selection for pre-journey setup.")
+    parser.add_argument("--profession", default="", help="Character profession filter for pre-journey setup.")
+    parser.add_argument(
+        "--imprint-slot-1-index",
+        type=int,
+        default=1,
+        help="1-based imprint index for setup slot 1.",
+    )
+    parser.add_argument(
+        "--imprint-slot-2-index",
+        type=int,
+        default=1,
+        help="1-based imprint index for setup slot 2.",
+    )
+    parser.add_argument("--support-deck", type=int, default=1, help="1-based support deck number for setup.")
+    parser.add_argument("--friend-support-name", default="", help="Friend support card name to search/select.")
+    return parser
+
+
+def prejourney_config_from_args(args: argparse.Namespace) -> PreJourneyConfig:
+    return PreJourneyConfig(
+        difficulty=args.difficulty,
+        character_name=args.character or "",
+        profession=args.profession,
+        imprint_slot_1_index=args.imprint_slot_1_index,
+        imprint_slot_2_index=args.imprint_slot_2_index,
+        support_deck=args.support_deck,
+        friend_support_name=args.friend_support_name,
+    )
+
+
+def state_for_skill_learning(state: GameState, observation: Observation, policy: TrainerPolicy) -> GameState:
+    """Enable final skill learning only after the D-DAY trading step is finished."""
+    if observation.screen == Screen.SKILL_SELECT and getattr(policy, "_dday_trading_done", False):
+        return replace(state, allow_skill_learning=True)
+    if observation.screen in (Screen.INITIAL, Screen.CHARACTER_SELECT, Screen.TRAINING_HUB):
+        return replace(state, allow_skill_learning=False)
+    return state
+
+
+def main() -> None:
+    parser = build_arg_parser()
     args = parser.parse_args()
+    prejourney_config = prejourney_config_from_args(args)
 
     if args.list_windows:
         _print_windows()
@@ -269,6 +313,14 @@ def main() -> None:
     print(f"profile={base_profile.name} resolution={base_profile.resolution[0]}x{base_profile.resolution[1]} regions={len(base_profile.regions)}")
     print(f"mode={mode_label} execute={'yes' if args.execute else 'dry-run'}")
     print(f"character={args.character or '(auto)'} build_profile={args.build_profile}")
+    print(
+        "prejourney="
+        f"difficulty={prejourney_config.difficulty} "
+        f"profession={prejourney_config.profession or '(auto)'} "
+        f"imprints={prejourney_config.imprint_slot_1_index},{prejourney_config.imprint_slot_2_index} "
+        f"support_deck={prejourney_config.support_deck} "
+        f"friend={prejourney_config.friend_support_name or '(none)'}"
+    )
     print("build=journey-visual-guard-20260520a")
     print(f"game window: {window.title} ({window.rect.width}x{window.rect.height})")
 
@@ -405,6 +457,7 @@ def main() -> None:
                 if rank_num is not None:
                     state = replace(state, character_rank=rank_num)
             state = replace(state, current_round=round_tracker.current_round)
+            state = state_for_skill_learning(state, observation, policy)
             print(f"  current_round={round_tracker.current_round}")
 
             # Decide

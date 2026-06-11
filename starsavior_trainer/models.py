@@ -306,6 +306,9 @@ class GameState:
     # 角色综合等级(数字, 从训练大厅 "RANK 21" 读)。委托选阶用: 选建议综合等级≤它的最高阶
     # 委托(能做的最高阶)。None=未知时退回选最低阶。
     character_rank: int | None = None
+    # Skills are intentionally skipped mid-run. Enable only when the journey-end
+    # flow enters the final skill-learning phase.
+    allow_skill_learning: bool = False
 
 
 @dataclass(frozen=True)

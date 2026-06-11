@@ -323,6 +323,13 @@ class ScreenReaderParserTest(unittest.TestCase):
         self.assertIsInstance(setting, EventFastForwardSetting)
         self.assertEqual(setting.selected_mode, "all_events")
 
+    def test_parse_event_fast_forward_requires_title_or_confirm_text(self) -> None:
+        profile = RegionProfile("test", (2560, 1440), {"event_fast_forward_no_option": Rect(552, 487, 472, 374), "event_fast_forward_watched_option": Rect(1044, 487, 472, 374), "event_fast_forward_all_option": Rect(1526, 476, 492, 394), "event_fast_forward_confirm_button": Rect(1102, 1005, 358, 75)})
+
+        setting = parse_event_fast_forward_setting([RegionText("event_fast_forward_title", "", 0.0), RegionText("event_fast_forward_confirm_button", "", 0.0)], profile)
+
+        self.assertIsNone(setting)
+
     def test_parse_dialogue_scene_uses_intro_skip_text(self) -> None:
         profile = RegionProfile("test", (2560, 1440), {"dialogue_intro_skip_button": Rect(2350, 55, 145, 60), "dialogue_intro_text_area": Rect(0, 1125, 2560, 315)})
         scene = parse_dialogue_scene([RegionText("dialogue_intro_skip_button", "SKIP", 0.98)], profile)

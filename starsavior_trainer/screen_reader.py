@@ -674,7 +674,12 @@ def parse_event_fast_forward_setting(
         return None
 
     title = texts.get("event_fast_forward_title", "")
-    if title and not contains_any_text(title, ("\u4e8b\u4ef6\u5feb\u8f6c\u8bbe\u5b9a", "fast")):
+    confirm_text = texts.get("event_fast_forward_confirm_button", "")
+    has_title = contains_any_text(title, ("\u4e8b\u4ef6\u5feb\u8f6c\u8bbe\u5b9a", "fast"))
+    has_confirm_button_text = contains_any_text(confirm_text, ("\u51b3\u5b9a", "\u786e\u8ba4", "confirm"))
+    if title and not has_title:
+        return None
+    if not has_title and not has_confirm_button_text:
         return None
 
     selected_mode = None

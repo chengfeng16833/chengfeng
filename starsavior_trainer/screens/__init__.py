@@ -215,6 +215,8 @@ def _decide_battle(obs, state, policy):
 
 
 def _decide_skill_select(obs, state, policy):
+    if state.allow_skill_learning and _is_iterable_of(obs.payload, SkillOption):
+        return policy.decide_skill(obs.payload, state)
     # 技能学习留到跑马完成后:前期进了技能/潜质界面就点右上角 ✕ 退出,不在前期学技能。
     return Action("click", policy.config.skill_select_close_button, "skill select: 前期不学技能, 点 ✕ 退出")
 

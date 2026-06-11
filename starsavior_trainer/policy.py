@@ -32,6 +32,22 @@ from starsavior_trainer.models import (
     TrainingChoice,
     TrainingHubStatus,
 )
+from starsavior_trainer.event_profiles import (
+    choose_event_by_profile,
+    event_profile_name_for_build,
+    load_event_profile,
+)
+from starsavior_trainer.shop_profiles import load_shop_profile, shop_effect_worth_buying
+from starsavior_trainer.skill_profiles import (
+    choose_skill_by_profile,
+    load_skill_profile,
+    skill_profile_name_for_build,
+)
+from starsavior_trainer.training_profiles import (
+    evaluate_training_profile,
+    load_training_profile,
+    training_profile_name_for_build,
+)
 from starsavior_trainer.screen_reader import PostTrainingResult, parse_first_int
 
 
@@ -486,8 +502,33 @@ class TrainerPolicy:
         return Action("click", dialogue.skip_button, f"dialogue {dialogue.variant}, click skip", repeat=3)
 
     def decide_training(self, choices: Iterable[TrainingChoice], state: GameState | None = None) -> Action:
+        choices_tuple = tuple(choices)
+        if state is not None:
+            profile_name = training_profile_name_for_build(state.build_profile)
+            profile_decision = evaluate_training_profile(
+                choices_tuple,
+                load_training_profile(profile_name=profile_name),
+                include_fallback_rules=False,
+            )
+            if profile_decision is not None:
+                if profile_decision.kind == "rest":
+                    back_button = next((c.back_button for c in choices_tuple if c.back_button is not None), None)
+                    if back_button is not None:
+                        self._needs_rest = True
+                        return Action(
+                            "click",
+                            back_button,
+                            f"training profile {profile_name}:{profile_decision.rule_id}, return to hub to rest",
+                        )
+                elif profile_decision.kind == "train" and profile_decision.choice is not None:
+                    choice = profile_decision.choice
+                    return self._training_action(
+                        choice,
+                        f"training profile {profile_name}:{profile_decision.rule_id}",
+                    )
+
         ranked = sorted(
-            ((self.training_score(choice, state), choice) for choice in choices),
+            ((self.training_score(choice, state), choice) for choice in choices_tuple),
             key=lambda item: item[0],
             reverse=True,
         )
@@ -506,19 +547,14 @@ class TrainerPolicy:
                 return Action("click", back_button, "all training fail rates too high, return to hub to rest")
             return Action("pause", None, "all training choices exceed failure threshold")
 
+        return self._training_action(best, f"score={score:.1f}, ring={best.ring}, fail={best.fail_rate}%")
+
+    def _training_action(self, choice: TrainingChoice, reason: str) -> Action:
         # Two-step flow: first click the desired card to select it (the game then
         # reveals its 失败率 and预计增益), then click the 训练 confirm button to run it.
-        if best.selected and best.confirm_button is not None:
-            return Action(
-                "click",
-                best.confirm_button,
-                f"confirm training {best.name}: score={score:.1f}, ring={best.ring}, fail={best.fail_rate}%",
-            )
-        return Action(
-            "click",
-            best.target,
-            f"select {best.name}: score={score:.1f}, ring={best.ring}, fail={best.fail_rate}%",
-        )
+        if choice.selected and choice.confirm_button is not None:
+            return Action("click", choice.confirm_button, f"confirm training {choice.name}: {reason}")
+        return Action("click", choice.target, f"select {choice.name}: {reason}")
 
     def decide_rest(self, rest: RestSubmenu) -> Action:
         # Pick the best affordable option: 冥想室 (60, full restore) > 住处 (30,
@@ -582,6 +618,27 @@ class TrainerPolicy:
         reason = f"event db: {event.get('title', '')} build={profile} -> option {index}"
         return options[index - 1], reason
 
+    def _event_profile_choice(
+        self, options: list[EventOption], state: GameState | None
+    ) -> tuple[EventOption, str] | None:
+        if not options:
+            return None
+        if not options[0].event_title and any(
+            any(keyword.lower() in option.text.lower() for keyword in DEFAULT_EVENT_KEYWORDS["fatigue_cost"])
+            for option in options
+        ):
+            return None
+        build = state.build_profile if state else "balanced"
+        profile_name = event_profile_name_for_build(build)
+        choice = choose_event_by_profile(options, load_event_profile(profile_name=profile_name))
+        if choice is None:
+            return None
+        reason = (
+            f"event profile {profile_name}: {choice.event_name or choice.event_id} "
+            f"-> option {choice.recommended_option}"
+        )
+        return choice.option, reason
+
     def _build_orientation_choice(
         self, options: list[EventOption], state: GameState | None
     ) -> tuple[EventOption, str] | None:
@@ -611,7 +668,13 @@ class TrainerPolicy:
             choice, reason = db_choice
             return Action("click", choice.target, f"{reason}: {choice.text}")
 
-        # 2) Generic attack-vs-survival branch fallback (events not in the DB).
+        # 2) Migrated master event profile lookup: title/option alias matching.
+        profile_choice = self._event_profile_choice(options, state)
+        if profile_choice is not None:
+            choice, reason = profile_choice
+            return Action("click", choice.target, f"{reason}: {choice.text}")
+
+        # 3) Generic attack-vs-survival branch fallback (events not in the DB).
         oriented = self._build_orientation_choice(options, state)
         if oriented is not None:
             choice, reason = oriented
@@ -720,7 +783,9 @@ class TrainerPolicy:
         # 按"效果说明"判断(商品名与效果无关): 效果含想要关键词(回复体力 / 潜质点数退还)
         # 就买。手持风扇效果是"伤害+1%"但含"潜质点数N退还"→ 仍买(白嫖潜质点)。
         effect = item.effect or ""
-        return any(kw in effect for kw in self.config.shop_buy_effect_keywords)
+        if any(kw in effect for kw in self.config.shop_buy_effect_keywords):
+            return True
+        return shop_effect_worth_buying(effect, load_shop_profile(profile_name="speed"))
 
     def choose_shop_item(self, items: Iterable[ShopItem]) -> ShopItem | None:
         # 返回第一个值得买的商品(按效果), 没有则 None。供 decide_shop 与 shop 检视器复用。
@@ -759,6 +824,17 @@ class TrainerPolicy:
         return score
 
     def decide_skill(self, options: Iterable[SkillOption], state: GameState) -> Action:
+        profile_name = skill_profile_name_for_build(state.build_profile)
+        profile_choice = choose_skill_by_profile(options, load_skill_profile(profile_name=profile_name))
+        if profile_choice is not None:
+            best = profile_choice.option
+            return Action(
+                "click",
+                best.target,
+                f"learn skill {best.name}: profile={profile_name}, matched={profile_choice.skill_name}, "
+                f"priority={profile_choice.priority}, keyword={profile_choice.keyword}, cost={best.cost}",
+            )
+
         ranked = sorted(
             ((self.skill_score(option, state), option) for option in options),
             key=lambda item: item[0],

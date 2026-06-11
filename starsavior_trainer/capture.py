@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import threading
 from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,7 @@ def capture_screen() -> Image.Image:
 
 
 _PW_RENDERFULLCONTENT = 2  # PrintWindow flag for DWM/hardware-accelerated content
+_PRINTWINDOW_TIMEOUT_SECONDS = 5.0
 
 
 class _BITMAPINFOHEADER(ctypes.Structure):
@@ -132,6 +134,24 @@ def _capture_client_via_printwindow(hwnd: int) -> Image.Image | None:
     return client
 
 
+def _run_capture_with_timeout(capture: Callable[[], Image.Image | None], timeout_seconds: float) -> Image.Image | None:
+    result: list[Image.Image | None] = [None]
+    error: list[BaseException | None] = [None]
+
+    def worker() -> None:
+        try:
+            result[0] = capture()
+        except BaseException as exc:
+            error[0] = exc
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_seconds)
+    if thread.is_alive() or error[0] is not None:
+        return None
+    return result[0]
+
+
 def capture_window(title_contains: str, target_width: int = 2560, target_height: int = 1440) -> tuple[Image.Image, WindowInfo]:
     """Capture the game window client area and scale to target resolution.
 
@@ -158,7 +178,10 @@ def capture_window(title_contains: str, target_width: int = 2560, target_height:
     # is covered or unfocused, so capture itself no longer needs to steal focus.
     # Fall back to a screen grab + crop only if PrintWindow fails (that path does
     # need the window visible, so activate it first).
-    client_img = _capture_client_via_printwindow(window.hwnd)
+    client_img = _run_capture_with_timeout(
+        lambda: _capture_client_via_printwindow(window.hwnd),
+        _PRINTWINDOW_TIMEOUT_SECONDS,
+    )
     if client_img is None:
         activate_window(window.hwnd)
         full = ImageGrab.grab()

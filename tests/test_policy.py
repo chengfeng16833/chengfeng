@@ -396,6 +396,31 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertNotEqual(action.kind, "pause")
         self.assertIn("rest", action.reason)
 
+    def test_training_profile_high_gain_rule_overrides_old_score(self) -> None:
+        choices = [
+            TrainingChoice("power", 80, "rainbow", 0, Rect(100, 100, 20, 20)),
+            TrainingChoice("stamina", 120, "none", 0, Rect(130, 100, 20, 20)),
+        ]
+
+        action = TrainerPolicy().decide_training(choices, GameState(build_profile="power_focus"))
+
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, choices[1].target)
+        self.assertIn("training profile attack", action.reason)
+        self.assertIn("adventure_any_gain", action.reason)
+
+    def test_training_profile_falls_back_to_old_score_when_no_rule_matches(self) -> None:
+        choices = [
+            TrainingChoice("power", 10, "none", 0, Rect(100, 100, 20, 20)),
+            TrainingChoice("stamina", 30, "none", 0, Rect(130, 100, 20, 20)),
+        ]
+
+        action = TrainerPolicy().decide_training(choices, GameState(build_profile="balanced"))
+
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, choices[1].target)
+        self.assertIn("score=", action.reason)
+
     def test_region_move_clicks_parsed_target(self) -> None:
         # REGION_MOVE must click the target the parser found (destination row, or the
         # 前往 button) — NOT a fixed config.move_button (the old bug clicked a
@@ -588,6 +613,20 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertEqual(power.target, attack.target)
         self.assertEqual(stamina.target, survival.target)
 
+    def test_event_profile_lookup_uses_master_event_database_after_primary_db(self) -> None:
+        options = [
+            EventOption("一起去吃限定甜点吧", Rect(10, 10, 20, 20), event_title="旅程事件 闲暇时间"),
+            EventOption("一起去看新上映的电影吧", Rect(40, 40, 20, 20), event_title="旅程事件 闲暇时间"),
+            EventOption("我们去露营吧", Rect(70, 70, 20, 20), event_title="旅程事件 闲暇时间"),
+            EventOption("今天就这样好好休息吧", Rect(100, 100, 20, 20), event_title="旅程事件 闲暇时间"),
+        ]
+
+        action = TrainerPolicy().decide_event(options, GameState(build_profile="power_focus"))
+
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, options[3].target)
+        self.assertIn("event profile attack", action.reason)
+
     def test_training_hub_uses_commission_alert_before_training(self) -> None:
         hub = TrainingHubStatus(
             training_button=Rect(10, 10, 20, 20),
@@ -683,6 +722,17 @@ class TrainerPolicyTest(unittest.TestCase):
         self.assertEqual(action.kind, "click")
         self.assertEqual(action.target, items[0].target)
 
+    def test_shop_buys_potential_gain_by_profile_effect_match(self) -> None:
+        items = [ShopItem("普通蛋糕", 70, Rect(10, 10, 20, 20), effect="效果 潜质10增加")]
+        action = TrainerPolicy().decide_shop(items)
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, items[0].target)
+
+    def test_shop_profile_does_not_buy_attribute_boosts(self) -> None:
+        items = [ShopItem("鸡排", 70, Rect(10, 10, 20, 20), effect="效果 韧性5增加")]
+        action = TrainerPolicy().decide_shop(items)
+        self.assertEqual(action.kind, "skip")
+
     def test_shop_skips_items_without_wanted_effect(self) -> None:
         # 效果不含想要关键词(纯攻击护符,非潜质退还/回体力)→ 不买(退出)。
         items = [ShopItem("某护符", 30, Rect(10, 10, 20, 20), effect="攻击力增加5%")]
@@ -751,6 +801,32 @@ class TrainerPolicyTest(unittest.TestCase):
         )
         self.assertEqual(action.kind, "click")
         self.assertEqual(action.target, policy.config.skill_select_close_button)
+
+    def test_skill_select_learns_when_endgame_learning_is_allowed(self) -> None:
+        options = [
+            SkillOption("攻击技巧", cost=10, target=Rect(10, 10, 20, 20)),
+            SkillOption("星光轨迹-7号", cost=200, target=Rect(40, 40, 20, 20)),
+        ]
+        action = TrainerPolicy().decide(
+            GameState(build_profile="power_focus", allow_skill_learning=True),
+            Observation(Screen.SKILL_SELECT, 0.95, options),
+        )
+
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, options[1].target)
+        self.assertIn("星光轨迹", action.reason)
+
+    def test_skill_profile_priority_beats_old_keyword_fallback(self) -> None:
+        options = [
+            SkillOption("攻击技巧", cost=10, target=Rect(10, 10, 20, 20)),
+            SkillOption("星光轨迹-7号", cost=200, target=Rect(40, 40, 20, 20)),
+        ]
+
+        action = TrainerPolicy().decide_skill(options, GameState(build_profile="power_focus"))
+
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, options[1].target)
+        self.assertIn("profile=attack", action.reason)
 
     def test_blessing_setup_opens_first_empty_slot(self) -> None:
         setup = BlessingSetup(

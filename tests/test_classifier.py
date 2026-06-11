@@ -7,6 +7,7 @@ from starsavior_trainer.classifier import (
     _classify_journey_origin_by_visual,
     _has_real_event_options,
     _match_screen,
+    classify_by_blue_button,
     classify_hybrid,
 )
 from starsavior_trainer.models import Screen
@@ -107,6 +108,22 @@ class ClassifierTest(unittest.TestCase):
         observation = classify_hybrid(image, profile, _JourneyOriginOcr())
 
         self.assertEqual(observation.screen, Screen.BLESSING_CHOICE)
+
+    def test_route_select_does_not_classify_as_confirm_dialog_by_blue(self) -> None:
+        profile = load_region_profile("config/regions/2560x1440.json")
+        image = Image.open(Path("screenshots") / "live_blessing_choice_missing_payload.png")
+
+        observation = classify_by_blue_button(image, profile)
+
+        self.assertNotEqual(observation.screen, Screen.CONFIRM_DIALOG)
+
+    def test_confirm_dialog_blue_requires_dialog_panel(self) -> None:
+        profile = load_region_profile("config/regions/2560x1440.json")
+        image = Image.open(Path("screenshots") / "confirm_dialog_001.png")
+
+        observation = classify_by_blue_button(image, profile)
+
+        self.assertEqual(observation.screen, Screen.CONFIRM_DIALOG)
 
     def test_battle_anchor_wins_over_training_hub_participation_text(self) -> None:
         screen, confidence = _match_screen(
