@@ -23,6 +23,8 @@ from starsavior_trainer.classifier import (
     _has_event_choice_signature,
     _has_game_menu_signature,
     _has_initial_signature,
+    _has_main_menu_panel_signature,
+    _has_main_screen_signature,
     _has_region_move_signature,
     _has_post_training_signature,
     _has_rest_submenu_signature,
@@ -30,6 +32,11 @@ from starsavior_trainer.classifier import (
     _has_shop_signature,
     _has_training_hub_shop_signature,
     _has_training_select_signature,
+)
+from starsavior_trainer.prejourney import (
+    decide_initial_with_difficulty,
+    decide_main_menu_panel,
+    decide_main_screen,
 )
 from starsavior_trainer.models import (
     Action,
@@ -67,6 +74,8 @@ from starsavior_trainer.screen_reader import (
     parse_event_choice,
     parse_event_fast_forward_setting,
     parse_journey_start,
+    parse_main_menu_panel,
+    parse_main_screen,
     parse_post_training,
     parse_region_move,
     parse_relic_choice,
@@ -87,7 +96,8 @@ from starsavior_trainer.screens.base import DelegatingScreenHandler
 
 
 def _decide_initial(obs, state, policy):
-    return Action("click", policy.config.start_button, "initial screen, click start")
+    # 赛前流程增强: 配置了难度时先点难度按钮再点开始; 无配置时与旧行为一致。
+    return decide_initial_with_difficulty(obs, state, policy)
 
 
 def _decide_character_select(obs, state, policy):
@@ -388,6 +398,18 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
     # background screen whose anchors are still partly visible behind the dialog.
     # Its 菜单-title + 观测-row signature is unique, so it never steals a normal
     # screen. No parse_fn — the policy clicks the fixed ✕ close button.
+    # 赛前流程入口(docs/prejourney-flow.md)。priority 排在所有局内画面之后:
+    # 主界面/菜单栏只在开局阶段出现, 签名词组合(战斗+管理…/旅程+商店…)足够特异。
+    Screen.MAIN_SCREEN: DelegatingScreenHandler(
+        Screen.MAIN_SCREEN, decide_main_screen, priority=11,
+        anchor_fn=_has_main_screen_signature, anchor_confidence=1.0,
+        parse_fn=parse_main_screen, ocr_prefixes=["main_screen"],
+    ),
+    Screen.MAIN_MENU_PANEL: DelegatingScreenHandler(
+        Screen.MAIN_MENU_PANEL, decide_main_menu_panel, priority=12,
+        anchor_fn=_has_main_menu_panel_signature, anchor_confidence=1.0,
+        parse_fn=parse_main_menu_panel, ocr_prefixes=["main_menu_panel"],
+    ),
     Screen.GAME_MENU: DelegatingScreenHandler(
         Screen.GAME_MENU, _decide_game_menu, priority=2,
         anchor_fn=_has_game_menu_signature, anchor_confidence=1.0,

@@ -397,6 +397,12 @@
     "skill_select_option_4_cost": [1975, 925, 160, 60],
     "skill_select_option_5_cost": [1975, 1085, 160, 50],
     "skill_select_confirm_button": [1840, 395, 310, 90],
-    "skill_select_scrollbar": [2165, 365, 22, 675]
+    "skill_select_scrollbar": [2165, 365, 22, 675],
+
+    "main_screen_menu_column": [150, 420, 220, 660],
+    "main_screen_menu_button": [2420, 50, 52, 50],
+
+    "main_menu_panel_grid_text": [990, 445, 1510, 165],
+    "main_menu_panel_journey_entry": [2113, 450, 190, 155]
   }
 }

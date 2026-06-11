@@ -37,6 +37,7 @@ from starsavior_trainer.event_profiles import (
     event_profile_name_for_build,
     load_event_profile,
 )
+from starsavior_trainer.prejourney import PrejourneyProgress
 from starsavior_trainer.shop_profiles import load_shop_profile, shop_effect_worth_buying
 from starsavior_trainer.skill_profiles import (
     choose_skill_by_profile,
@@ -269,11 +270,22 @@ class PolicyConfig:
     # 误触弹出的游戏「菜单」弹窗右上角 ✕ 关闭按钮。识别到菜单就点它关闭(自愈), 绝不点
     # 菜单中部的 重新观测/观测结束(会重开/结束本局)。坐标取自真帧 OCR 的 X 块中心。
     game_menu_close_button: Rect = Rect(1808, 535, 64, 60)
+    # 「选择旅程」画面右下角的三个难度按钮(与 regions JSON 的
+    # route_select_difficulty_* 同值)。赛前配置了难度时先点它再点开始。
+    difficulty_buttons: dict[str, Rect] = field(
+        default_factory=lambda: {
+            "easy": Rect(2040, 1228, 155, 66),
+            "normal": Rect(2198, 1228, 155, 66),
+            "hard": Rect(2354, 1228, 155, 66),
+        }
+    )
 
 
 class TrainerPolicy:
     def __init__(self, config: PolicyConfig | None = None):
         self.config = config or PolicyConfig()
+        # 赛前流程(主界面→进旅途)的单局进度标记, 防重复点击/死循环。
+        self.prejourney_progress = PrejourneyProgress()
         self._pending_commission: Rect | None = None
         # Two-step relic confirm: remembers the relic card we clicked so the next
         # call clicks 确认 instead of re-evaluating "best" every frame. Without this

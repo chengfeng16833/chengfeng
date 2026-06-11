@@ -27,6 +27,12 @@ class Screen(str, Enum):
     # "获得奖励" reward-obtained popup (a fixed relic is granted, no choice). The
     # centre card is a dead click zone; only the "点击以继续" prompt advances it.
     REWARD = "reward"
+    # 赛前流程(docs/prejourney-flow.md): 游戏主界面(左侧 战斗/管理/总部/公会/商店/观测
+    # 竖排菜单), 右上角菜单按钮可能带红色感叹号也可能不带, 两种都从这里点开菜单栏。
+    MAIN_SCREEN = "main_screen"
+    # 主界面菜单栏面板(付费商店/主线商店/作战/旅程…图标网格)。注意与 GAME_MENU
+    # (局内误触的 菜单+观测 弹窗)是两个不同画面。
+    MAIN_MENU_PANEL = "main_menu_panel"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or
@@ -291,6 +297,20 @@ class TrainingHubStatus:
 
 
 @dataclass(frozen=True)
+class MainScreen:
+    """游戏主界面 payload: 右上角菜单按钮(进旅途流程的入口)。"""
+
+    menu_button: Rect
+
+
+@dataclass(frozen=True)
+class MainMenuPanel:
+    """主界面菜单栏 payload: 「旅程」入口按钮。"""
+
+    journey_entry: Rect
+
+
+@dataclass(frozen=True)
 class GameState:
     current_rank: str = "C"
     coins: int = 0
@@ -309,6 +329,10 @@ class GameState:
     # Skills are intentionally skipped mid-run. Enable only when the journey-end
     # flow enters the final skill-learning phase.
     allow_skill_learning: bool = False
+    # 赛前流程配置(难度/职业/刻印序号/卡组/好友卡, 见 run_config.PreJourneyConfig)。
+    # None = 老调用方式, 赛前增强逻辑全部跳过, 行为与之前完全一致。
+    # 类型用 object 以避免 models→run_config 的依赖边; 实际类型是 PreJourneyConfig。
+    prejourney: object | None = None
 
 
 @dataclass(frozen=True)

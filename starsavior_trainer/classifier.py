@@ -51,6 +51,9 @@ _FAST_ANCHORS: tuple[str, ...] = (
     # recognised as REGION_MOVE instead of falling through to a relic_choice misscore.
     "region_move_anchor_title",
     "region_move_station_title",
+    # 赛前流程入口: 游戏主界面(左侧菜单竖排)与主界面菜单栏(图标网格行)。
+    "main_screen_menu_column",
+    "main_menu_panel_grid_text",
 )
 
 
@@ -365,6 +368,8 @@ def classify_by_filename(path: str | Path) -> Observation:
 
 
 ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
+    Screen.MAIN_SCREEN: ["main_screen_menu_column"],
+    Screen.MAIN_MENU_PANEL: ["main_menu_panel_grid_text"],
     Screen.INITIAL: ["route_select_anchor_title", "route_select_route_title", "start_button"],
     Screen.CHARACTER_SELECT: ["character_select_anchor_title"],
     Screen.BLESSING_SETUP: ["blessing_setup_anchor_title"],
@@ -684,6 +689,25 @@ def _has_region_move_signature(anchors: dict[str, str]) -> bool:
     return contains_any_text(anchor, ("地区移动", "区移动")) and contains_any_text(
         station, ("列车月台", "车月台", "月台")
     )
+
+
+def _has_main_screen_signature(anchors: dict[str, str]) -> bool:
+    # 游戏主界面: 左侧竖排菜单(战斗/管理/总部/公会/商店/观测)。要求 ≥2 个词命中
+    # 才认, 单个词(如 商店)会在 SHOP 等画面出现, 两个以上的组合只有主界面有。
+    column = anchors.get("main_screen_menu_column", "")
+    if not column:
+        return False
+    words = ("战斗", "管理", "总部", "公会", "商店", "观测")
+    return sum(1 for word in words if word in column) >= 2
+
+
+def _has_main_menu_panel_signature(anchors: dict[str, str]) -> bool:
+    # 主界面菜单栏面板: 必须同时有「旅程」和任一商店/作战类词。区别于局内误触弹窗
+    # GAME_MENU(那个是 菜单+观测 组合, 没有 付费商店/主线商店/作战 这排图标文字)。
+    grid = anchors.get("main_menu_panel_grid_text", "")
+    if "旅程" not in grid:
+        return False
+    return any(word in grid for word in ("付费商店", "主线商店", "作战", "酒馆", "培养"))
 
 
 def _has_game_menu_signature(anchors: dict[str, str]) -> bool:

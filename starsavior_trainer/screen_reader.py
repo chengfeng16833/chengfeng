@@ -24,6 +24,8 @@ from starsavior_trainer.models import (
     EventFastForwardSetting,
     EventOption,
     JourneyStart,
+    MainMenuPanel,
+    MainScreen,
     Rect,
     RelicChoice,
     RelicOption,
@@ -617,6 +619,28 @@ def _parse_detail_panel_selection(texts: dict[str, str]) -> tuple[str, int] | No
             if parsed is not None:
                 return parsed
     return None
+
+
+def parse_main_screen(
+    region_texts: Iterable[RegionText],
+    profile: RegionProfile,
+) -> MainScreen | None:
+    """游戏主界面: 取右上角菜单按钮(有无红色感叹号都点同一处)。"""
+    menu_button = profile.regions.get("main_screen_menu_button")
+    if menu_button is None:
+        return None
+    return MainScreen(menu_button=menu_button)
+
+
+def parse_main_menu_panel(
+    region_texts: Iterable[RegionText],
+    profile: RegionProfile,
+) -> MainMenuPanel | None:
+    """主界面菜单栏: 取「旅程」入口按钮。"""
+    journey_entry = profile.regions.get("main_menu_panel_journey_entry")
+    if journey_entry is None:
+        return None
+    return MainMenuPanel(journey_entry=journey_entry)
 
 
 def parse_journey_start(
