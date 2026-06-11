@@ -713,12 +713,14 @@ def _has_main_screen_signature(anchors: dict[str, str]) -> bool:
 
 
 def _has_main_menu_panel_signature(anchors: dict[str, str]) -> bool:
-    # 主界面菜单栏面板: 必须同时有「旅程」和任一商店/作战类词。区别于局内误触弹窗
-    # GAME_MENU(那个是 菜单+观测 组合, 没有 付费商店/主线商店/作战 这排图标文字)。
+    # 主界面菜单栏面板: 必须同时有「旅程」和任一商店/故事/作战类词。区别于局内误触
+    # 弹窗 GAME_MENU(那个是 菜单+观测 组合, 没有这排图标文字)。
+    # 词表含新旧版本 UI 文案: 实机 2026-06 是 付费商店/主线故事/作战/旅程,
+    # docx 旧截图是 付费商店/主线商店/作战/旅程。
     grid = anchors.get("main_menu_panel_grid_text", "")
     if "旅程" not in grid:
         return False
-    return any(word in grid for word in ("付费商店", "主线商店", "作战", "酒馆", "培养"))
+    return any(word in grid for word in ("付费商店", "主线商店", "主线故事", "作战", "酒馆", "培养"))
 
 
 def _has_filter_dialog_signature(anchors: dict[str, str]) -> bool:

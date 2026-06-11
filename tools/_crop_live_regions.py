@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""临时诊断: 从实机主界面帧裁出候选区域放大保存, 用于人工定坐标。"""
+"""临时诊断: 从实机帧裁出候选区域放大保存, 用于人工定坐标。"""
 import sys
 from pathlib import Path
 
@@ -7,15 +7,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PIL import Image  # noqa: E402
 
-src = Image.open("screenshots/prejourney_live_001.png")
+src_path = sys.argv[1] if len(sys.argv) > 1 else "screenshots/prejourney_live_003.png"
+src = Image.open(src_path)
 out_dir = Path("debug/prejourney_calib")
 out_dir.mkdir(parents=True, exist_ok=True)
 
+# 菜单面板第一行(付费商店..旅程)附近
 crops = {
-    # 右上角整条图标区(找菜单按钮)
-    "topright": (2200, 0, 2560, 100),
-    # 左侧菜单竖排(战斗..观测)
-    "leftmenu": (80, 380, 360, 1120),
+    "panel_row1": (1300, 250, 2200, 520),
 }
 for name, box in crops.items():
     img = src.crop(box)

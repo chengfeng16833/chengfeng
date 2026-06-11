@@ -418,8 +418,10 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
     # screen. No parse_fn — the policy clicks the fixed ✕ close button.
     # 赛前流程入口(docs/prejourney-flow.md)。priority 排在所有局内画面之后:
     # 主界面/菜单栏只在开局阶段出现, 签名词组合(战斗+管理…/旅程+商店…)足够特异。
+    # 注意: 菜单面板只盖右侧 2/3, 左侧菜单列仍可见 → 面板(11)必须先于主界面(12)
+    # 检查, 否则面板开着时被认成主界面、反复点菜单按钮(实机帧验证过这个误判)。
     Screen.MAIN_SCREEN: DelegatingScreenHandler(
-        Screen.MAIN_SCREEN, decide_main_screen, priority=11,
+        Screen.MAIN_SCREEN, decide_main_screen, priority=12,
         anchor_fn=_has_main_screen_signature, anchor_confidence=1.0,
         parse_fn=parse_main_screen, ocr_prefixes=["main_screen"],
     ),
@@ -431,7 +433,7 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         parse_fn=parse_filter_dialog, ocr_prefixes=["filter_dialog"],
     ),
     Screen.MAIN_MENU_PANEL: DelegatingScreenHandler(
-        Screen.MAIN_MENU_PANEL, decide_main_menu_panel, priority=12,
+        Screen.MAIN_MENU_PANEL, decide_main_menu_panel, priority=11,
         anchor_fn=_has_main_menu_panel_signature, anchor_confidence=1.0,
         parse_fn=parse_main_menu_panel, ocr_prefixes=["main_menu_panel"],
     ),

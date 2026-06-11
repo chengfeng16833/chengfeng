@@ -402,8 +402,8 @@
     "main_screen_menu_column": [150, 420, 220, 660],
     "main_screen_menu_button": [2420, 50, 52, 50],
 
-    "main_menu_panel_grid_text": [990, 445, 1510, 165],
-    "main_menu_panel_journey_entry": [2113, 450, 190, 155],
+    "main_menu_panel_grid_text": [1375, 305, 990, 155],
+    "main_menu_panel_journey_entry": [2120, 305, 220, 150],
 
     "character_select_filter_button": [2430, 245, 85, 80],
     "filter_dialog_anchor_title": [350, 290, 200, 85],
