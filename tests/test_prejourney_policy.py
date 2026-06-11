@@ -27,7 +27,6 @@ from starsavior_trainer.models import (
 )
 from starsavior_trainer.policy import TrainerPolicy
 from starsavior_trainer.prejourney import (
-    imprint_index_to_row_col,
     normalize_difficulty,
     normalize_profession,
 )
@@ -266,112 +265,68 @@ class ProfessionFilterTest(unittest.TestCase):
         )
 
 
-def _blessing_choice(dropdown_open: bool = False) -> BlessingChoice:
+def _blessing_choice(star: bool = True, star_active: bool = False) -> BlessingChoice:
     return BlessingChoice(
         options=[],
         confirm_button=Rect(2210, 1310, 250, 90),
-        value_filter_button=Rect(1090, 195, 250, 90),
-        attr_filter_button=Rect(1380, 195, 130, 90),
-        value_dropdown_ability_item=Rect(1310, 400, 260, 45) if dropdown_open else None,
-        grid_origin=Rect(224, 480, 300, 220),
-        grid_step_x=320,
-        grid_step_y=272,
+        star_filter_button=Rect(1704, 173, 53, 47) if star else None,
+        star_filter_active=star_active,
     )
 
 
-class ImprintFlowTest(unittest.TestCase):
-    """刻印操作流程: 数值筛选→能力值领域→属性筛选→(弹窗选属性)→按序号点卡→确认。"""
+class ImprintStarFlowTest(unittest.TestCase):
+    """刻印操作(2026-06-12 拍板): 星标暗→点亮过滤出祝福; 亮→旧逻辑选最高值。
 
-    def test_full_imprint_flow_for_slot_2(self) -> None:
-        policy = TrainerPolicy()
-        # 模拟 BLESSING_SETUP 点开了槽 2(由 decide_blessing_setup 记录)。
-        policy.prejourney_progress.extra["current_imprint_slot"] = 2
-        state = _state(profession="术师", imprint_slot_2_index=12)
+    星标是 toggle 且游戏跨界面记住状态(实跑教训: 槽2 进来已亮, 盲点会关掉
+    过滤)→ 必须按画面像素状态决定, 不按"点没点过"记忆。
+    """
 
-        # 1) 点数值筛选入口。
-        a1 = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice()))
-        self.assertEqual(a1.target, Rect(1090, 195, 250, 90))
-
-        # 2) 下拉展开 → 点「能力值领域」。
-        a2 = policy.decide(
-            state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice(dropdown_open=True))
-        )
-        self.assertEqual(a2.target, Rect(1310, 400, 260, 45))
-
-        # 3) 点属性筛选按钮(弹出筛选弹窗)。
-        a3 = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice()))
-        self.assertEqual(a3.target, Rect(1380, 195, 130, 90))
-
-        # 4) 筛选弹窗(FILTER_DIALOG)被分类出来: 选属性 → 确认。术师→力量。
-        dialog = FilterDialog(
-            profession_buttons={"术师": Rect(1248, 590, 250, 100)},
-            confirm_button=Rect(1310, 1180, 260, 90),
-            attribute_buttons={"力量": Rect(384, 750, 250, 95), "体力": Rect(672, 750, 250, 95)},
-        )
-        a4 = policy.decide(state, Observation(Screen.FILTER_DIALOG, 0.95, payload=dialog))
-        self.assertEqual(a4.target, Rect(384, 750, 250, 95))
-        a5 = policy.decide(state, Observation(Screen.FILTER_DIALOG, 0.95, payload=dialog))
-        self.assertEqual(a5.target, Rect(1310, 1180, 260, 90))
-
-        # 5) 回到刻印网格: 槽 2 配置第 12 个 → 第 3 排第 2 个。
-        a6 = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice()))
-        self.assertEqual(a6.target, Rect(224 + 320, 480 + 2 * 272, 300, 220))
-        self.assertIn("#12", a6.reason)
-
-        # 6) 确认选卡, 流程阶段清空(回 BLESSING_SETUP 后下一个槽重新来)。
-        a7 = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice()))
-        self.assertEqual(a7.target, Rect(2210, 1310, 250, 90))
-        self.assertNotIn("imprint_stage", policy.prejourney_progress.extra)
-
-    def test_value_filter_active_skips_dropdown(self) -> None:
-        # 实机常态: 下拉框默认已显示「能力值祝福」→ 跳过点下拉, 直接点属性筛选。
-        from dataclasses import replace as dc_replace
-
-        policy = TrainerPolicy()
-        policy.prejourney_progress.extra["current_imprint_slot"] = 1
-        state = _state(profession="术师")
-        payload = dc_replace(_blessing_choice(), value_filter_active=True)
-
-        action = policy.decide(state, Observation(Screen.BLESSING_CHOICE, 0.95, payload=payload))
-        self.assertEqual(action.target, Rect(1380, 195, 130, 90))  # 直接属性筛选
-        self.assertEqual(policy.prejourney_progress.extra["imprint_stage"], "attr_dialog")
-
-    def test_imprint_flow_is_default_even_without_prejourney(self) -> None:
-        # 2026-06-12 拍板: 筛选流程是唯一主逻辑, 不带 prejourney 配置也走它。
+    def test_star_dark_clicks_to_enable(self) -> None:
         policy = TrainerPolicy()
         action = policy.decide(
-            GameState(), Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice())
+            GameState(),
+            Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice(star_active=False)),
         )
-        self.assertEqual(action.target, Rect(1090, 195, 250, 90))  # 点数值筛选
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, Rect(1704, 173, 53, 47))
+        self.assertIn("star", action.reason)
 
-    def test_old_logic_only_when_regions_missing(self) -> None:
-        # 筛选区域未配置(其他分辨率 profile)→ 兜底回旧「选最高值祝福」逻辑。
+    def test_star_already_lit_skips_click(self) -> None:
+        # 槽2 场景: 星标已亮(槽1 开过, 游戏记住了)→ 绝不再点, 直接旧逻辑。
         policy = TrainerPolicy()
-        bare = BlessingChoice(options=[], confirm_button=Rect(2210, 1310, 250, 90))
-        action = policy.decide(GameState(), Observation(Screen.BLESSING_CHOICE, 0.95, payload=bare))
-        # 旧逻辑: 没有属性匹配选项 → pause。
+        action = policy.decide(
+            GameState(),
+            Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice(star_active=True)),
+        )
+        # 旧逻辑: 没有属性匹配选项(options 空)→ pause, 而不是点星标。
         self.assertEqual(action.kind, "pause")
 
-    def test_attribute_falls_back_to_build_profile(self) -> None:
-        # 没配职业时按培养方向推属性: stamina_tank → 体力。
-        from starsavior_trainer.prejourney import imprint_attribute_for
+    def test_star_state_detection_thresholds(self) -> None:
+        # 像素检测: 开=白底亮按钮(实测81%亮), 关=深色(0%)。阈值40%。
+        from PIL import Image as PILImage
 
+        from starsavior_trainer.screen_reader import _star_filter_is_active
+
+        rect = Rect(1704, 173, 53, 47)
+        lit = PILImage.new("RGB", (2560, 1440), (64, 64, 64))
+        lit.paste(PILImage.new("RGB", (53, 47), (225, 220, 210)), (1704, 173))
+        self.assertTrue(_star_filter_is_active(lit, rect))
+        dark = PILImage.new("RGB", (2560, 1440), (64, 64, 64))
+        self.assertFalse(_star_filter_is_active(dark, rect))
+        self.assertFalse(_star_filter_is_active(None, rect))
+
+    def test_star_region_missing_falls_back_to_old_logic(self) -> None:
+        # 星标区域未配置(其他分辨率 profile)→ 直接旧逻辑, 不点不崩。
         policy = TrainerPolicy()
-        self.assertEqual(imprint_attribute_for(GameState(build_profile="stamina_tank"), policy), "体力")
-        self.assertEqual(imprint_attribute_for(GameState(build_profile="power_focus"), policy), "力量")
-        # 显式指定优先于一切。
-        self.assertEqual(
-            imprint_attribute_for(GameState(desired_blessing_attribute="guts"), policy), "韧性"
+        action = policy.decide(
+            GameState(), Observation(Screen.BLESSING_CHOICE, 0.95, payload=_blessing_choice(star=False))
         )
-        # 职业映射优先于培养方向。
-        state = _state(profession="辅助")
-        self.assertEqual(imprint_attribute_for(state, policy), "体力")
+        self.assertEqual(action.kind, "pause")
 
-    def test_blessing_setup_records_slot_and_resets_stage(self) -> None:
+    def test_blessing_setup_records_slot(self) -> None:
         from starsavior_trainer.models import BlessingSetup, BlessingSlot
 
         policy = TrainerPolicy()
-        policy.prejourney_progress.extra["imprint_stage"] = "filtered"
         setup = BlessingSetup(
             slots=[
                 BlessingSlot(index=1, occupied=True, target=Rect(1200, 600, 160, 160)),
@@ -384,7 +339,6 @@ class ImprintFlowTest(unittest.TestCase):
         action = policy.decide_blessing_setup(setup)
         self.assertEqual(action.target, Rect(2050, 380, 160, 160))
         self.assertEqual(policy.prejourney_progress.extra["current_imprint_slot"], 2)
-        self.assertNotIn("imprint_stage", policy.prejourney_progress.extra)
 
 
 class SupportDeckAndFriendTest(unittest.TestCase):
@@ -528,27 +482,6 @@ class DeckDotDetectionTest(unittest.TestCase):
 
         image = PILImage.new("RGB", (2560, 1440), (60, 60, 70))
         self.assertIsNone(_detect_active_deck_dot(image, Rect(1800, 940, 250, 40)))
-
-
-class ImprintIndexTest(unittest.TestCase):
-    """刻印序号 → 行列换算(网格每排 5 个)。迁移计划指定用例。"""
-
-    def test_index_4_is_row_1_col_4(self) -> None:
-        self.assertEqual(imprint_index_to_row_col(4), (1, 4))
-
-    def test_index_12_is_row_3_col_2(self) -> None:
-        self.assertEqual(imprint_index_to_row_col(12), (3, 2))
-
-    def test_index_1_is_row_1_col_1(self) -> None:
-        self.assertEqual(imprint_index_to_row_col(1), (1, 1))
-
-    def test_index_5_and_6_wrap(self) -> None:
-        self.assertEqual(imprint_index_to_row_col(5), (1, 5))
-        self.assertEqual(imprint_index_to_row_col(6), (2, 1))
-
-    def test_invalid_index_clamps_to_first(self) -> None:
-        self.assertEqual(imprint_index_to_row_col(0), (1, 1))
-        self.assertEqual(imprint_index_to_row_col(-3), (1, 1))
 
 
 if __name__ == "__main__":

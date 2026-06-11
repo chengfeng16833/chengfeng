@@ -213,16 +213,15 @@ class CharacterSelect:
 
 @dataclass(frozen=True)
 class FilterDialog:
-    """通用筛选弹窗 payload。
+    """筛选弹窗 payload(角色选择的职业筛选; 按钮位置由 OCR bbox 定位)。
 
-    职业按钮(UI 用语: 坦克/突击者/游侠/术师/刺客/辅助)用于角色选择;
-    属性按钮(力量/体力/韧性/专注/保护)用于刻印操作的属性筛选。
+    职业按钮 UI 用语: 坦克/突击者/游侠/术师/刺客/辅助。
+    刻印环节不再使用本弹窗(2026-06-12 改为星标过滤+旧逻辑选取)。
     """
 
     profession_buttons: dict[str, Rect]
     confirm_button: Rect
     reset_button: Rect | None = None
-    attribute_buttons: dict[str, Rect] | None = None
 
 
 @dataclass(frozen=True)
@@ -256,19 +255,12 @@ class BlessingChoice:
     confirm_button: Rect | None = None
     selected_name: str | None = None
     detail_sub_blessing_count: int = 0
-    # ---- 赛前刻印筛选流程(docs/prejourney-flow.md 5.1)新增, 全部可缺省 ----
-    # 顶部「数值筛选」下拉入口与「属性筛选」按钮。
-    value_filter_button: Rect | None = None
-    attr_filter_button: Rect | None = None
-    # 下拉框当前已显示「能力值祝福/能力值领域」→ 数值模式已生效, 跳过点下拉
-    # (实机 2026-06: 游戏默认/记忆就是能力值祝福, 多数情况不用点)。
-    value_filter_active: bool = False
-    # 数值筛选下拉展开时「能力值领域」项的位置; OCR 没读到下拉 → None(=没展开)。
-    value_dropdown_ability_item: Rect | None = None
-    # 筛选后网格(每排 5 个)的第 1 排第 1 卡位置与行列步长, 用于按序号点卡。
-    grid_origin: Rect | None = None
-    grid_step_x: int = 0
-    grid_step_y: int = 0
+    # 顶部星标(收藏过滤)按钮: 点亮后自动过滤出「祝福」, 之后用旧「按属性挑
+    # 数值最高」逻辑选取(2026-06-12 用户拍板的简化流程, 取代弹窗属性筛选)。
+    star_filter_button: Rect | None = None
+    # 星标当前是否点亮(像素检测: 亮=白底高亮按钮, 暗=未激活)。toggle 按钮
+    # 不能盲点 —— 游戏跨界面记住状态, 槽2 进来已亮时再点反而会关掉过滤。
+    star_filter_active: bool = False
 
 
 @dataclass(frozen=True)

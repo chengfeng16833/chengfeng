@@ -430,7 +430,9 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
     Screen.FILTER_DIALOG: DelegatingScreenHandler(
         Screen.FILTER_DIALOG, decide_filter_dialog, priority=1,
         anchor_fn=_has_filter_dialog_signature, anchor_confidence=1.0,
-        parse_fn=parse_filter_dialog, ocr_prefixes=["filter_dialog"],
+        # OCR bbox 定位按钮(弹窗可拖动滚动, 固定坐标不可靠), 需要 image+ocr。
+        parse_fn=parse_filter_dialog, parse_needs_image=True, parse_needs_ocr=True,
+        ocr_prefixes=["filter_dialog"],
     ),
     Screen.MAIN_MENU_PANEL: DelegatingScreenHandler(
         Screen.MAIN_MENU_PANEL, decide_main_menu_panel, priority=11,

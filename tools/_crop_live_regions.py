@@ -7,14 +7,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PIL import Image  # noqa: E402
 
-src_path = sys.argv[1] if len(sys.argv) > 1 else "screenshots/prejourney_live_003.png"
+src_path = sys.argv[1] if len(sys.argv) > 1 else "screenshots/prejourney_live_012.png"
 src = Image.open(src_path)
 out_dir = Path("debug/prejourney_calib")
 out_dir.mkdir(parents=True, exist_ok=True)
 
-# 菜单面板第一行(付费商店..旅程)附近
 crops = {
-    "panel_row1": (1300, 250, 2200, 520),
+    # 弹窗右缘(找滚动条)
+    "dialog_right_edge": (2150, 380, 2330, 1180),
+    # 能力值祝福区段头整行(找折叠箭头/展开标记)
+    "ability_header": (280, 980, 2280, 1070),
 }
 for name, box in crops.items():
     img = src.crop(box)

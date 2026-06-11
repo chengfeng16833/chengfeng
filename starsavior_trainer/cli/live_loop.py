@@ -630,7 +630,7 @@ def _read_screen_payload_ocr(
         for rt in region_texts:
             print(f"  ocr {rt.name}: '{rt.text}' ({rt.confidence:.2f})")
 
-    return handler.parse(region_texts, profile, image)
+    return handler.parse(region_texts, profile, image, ocr=reader.ocr)
 
 
 # ---------------------------------------------------------------------------

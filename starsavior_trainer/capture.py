@@ -202,6 +202,11 @@ def save_image(image: Image.Image, path: str | Path) -> Path:
 
 
 def find_window(title_contains: str) -> WindowInfo | None:
+    """按标题找窗口: 精确相等(忽略大小写)优先, 其次才是包含匹配。
+
+    没有精确优先时, 桌面上开着 "starsavior-trainer - 文件资源管理器" 这类
+    标题包含游戏名的窗口会按 Z 序截胡真正的 "StarSavior" 游戏窗口(实测踩过)。
+    """
     needle = title_contains.casefold()
     matches: list[WindowInfo] = []
 
@@ -216,6 +221,9 @@ def find_window(title_contains: str) -> WindowInfo | None:
         return True
 
     _enum_windows(visit)
+    for info in matches:
+        if info.title.strip().casefold() == needle:
+            return info
     return matches[0] if matches else None
 
 

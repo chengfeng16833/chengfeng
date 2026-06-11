@@ -598,18 +598,7 @@ def parse_blessing_choice(
                 )
                 break
 
-    # 赛前刻印筛选流程的附加观察(区域未配置时全为 None/0, 不影响旧逻辑)。
-    dropdown_rect = profile.regions.get("blessing_value_dropdown_ability")
-    dropdown_text = texts.get("blessing_value_dropdown_ability", "")
-    dropdown_open = dropdown_rect is not None and contains_any_text(dropdown_text, ("能力值", "领域"))
-    # 下拉框收起状态已显示「能力值祝福」(新版 UI 文案; 旧 docx 叫「能力值领域」)
-    # → 数值模式已生效, decide 直接跳过点下拉。
-    value_filter_text = texts.get("blessing_value_filter_button", "")
-    value_filter_active = contains_any_text(value_filter_text, ("能力值",))
-    cell_11 = profile.regions.get("blessing_grid_cell_1_1")
-    cell_12 = profile.regions.get("blessing_grid_cell_1_2")
-    cell_21 = profile.regions.get("blessing_grid_cell_2_1")
-
+    star_rect = profile.regions.get("blessing_star_filter_button")
     return BlessingChoice(
         options=options,
         confirm_button=profile.regions.get("blessing_choice_confirm_button"),
@@ -619,14 +608,27 @@ def parse_blessing_choice(
         if selected_card_index is not None
         else None,
         detail_sub_blessing_count=selected_sub_blessing_count,
-        value_filter_button=profile.regions.get("blessing_value_filter_button"),
-        attr_filter_button=profile.regions.get("blessing_attr_filter_button"),
-        value_filter_active=value_filter_active,
-        value_dropdown_ability_item=dropdown_rect if dropdown_open else None,
-        grid_origin=cell_11,
-        grid_step_x=(cell_12.x - cell_11.x) if (cell_11 and cell_12) else 0,
-        grid_step_y=(cell_21.y - cell_11.y) if (cell_11 and cell_21) else 0,
+        # 星标(收藏过滤)按钮 + 当前点亮状态(实机: 开=白底亮按钮, 关=深色)。
+        star_filter_button=star_rect,
+        star_filter_active=_star_filter_is_active(image, star_rect),
     )
+
+
+def _star_filter_is_active(image: Image.Image | None, star_rect: Rect | None) -> bool:
+    """星标按钮亮像素占比 > 40% = 过滤已开(实测: 开 81% / 关 0%)。"""
+    if image is None or star_rect is None:
+        return False
+    try:
+        box = image.convert("RGB").crop(
+            (star_rect.x, star_rect.y, star_rect.x + star_rect.width, star_rect.y + star_rect.height)
+        )
+        pixels = list(box.getdata())
+    except Exception:
+        return False
+    if not pixels:
+        return False
+    bright = sum(1 for r, g, b in pixels if r > 200 and g > 200 and b > 200)
+    return bright / len(pixels) > 0.40
 
 
 def _parse_detail_panel_selection(texts: dict[str, str]) -> tuple[str, int] | None:
@@ -647,35 +649,43 @@ def _parse_detail_panel_selection(texts: dict[str, str]) -> tuple[str, int] | No
     return None
 
 
-_FILTER_PROFESSION_ORDER = ("坦克", "突击者", "游侠", "术师", "刺客", "辅助")
-_FILTER_ATTRIBUTE_ORDER = ("力量", "体力", "韧性", "专注", "保护")
+_FILTER_PROFESSIONS = ("坦克", "突击者", "游侠", "术师", "刺客", "辅助")
 
 
 def parse_filter_dialog(
     region_texts: Iterable[RegionText],
     profile: RegionProfile,
+    image: Image.Image | None = None,
+    ocr: OcrEngine | None = None,
 ) -> FilterDialog | None:
-    """通用筛选弹窗: 职业按钮 prof_1..6 + 属性按钮 attr_1..5(固定顺序)+ 确认。"""
+    """筛选弹窗: 用 OCR bbox 在弹窗内容区定位职业按钮(点词=点按钮)。
+
+    实机弹窗布局与 docx 不同(职业 3+3 两行), 固定坐标不可靠 —— 学
+    parse_character_select_bbox 的做法, 找到目标词就点词中心(实测一点即中)。
+    """
     confirm_button = profile.regions.get("filter_dialog_confirm_button")
-    if confirm_button is None:
+    content = profile.regions.get("filter_dialog_content")
+    if confirm_button is None or content is None:
         return None
     professions: dict[str, Rect] = {}
-    for index, name in enumerate(_FILTER_PROFESSION_ORDER, start=1):
-        rect = profile.regions.get(f"filter_dialog_prof_{index}")
-        if rect is not None:
-            professions[name] = rect
-    attributes: dict[str, Rect] = {}
-    for index, name in enumerate(_FILTER_ATTRIBUTE_ORDER, start=1):
-        rect = profile.regions.get(f"filter_dialog_attr_{index}")
-        if rect is not None:
-            attributes[name] = rect
-    if not professions and not attributes:
-        return None
+    if image is not None and ocr is not None:
+        try:
+            lines = ocr.read_lines(crop_region(image, content))
+        except Exception:
+            lines = []
+        for line in lines:
+            text = normalize_ocr_text(line.text)
+            if not text:
+                continue
+            x1, y1, x2, y2 = line.box
+            target = Rect(content.x + x1, content.y + y1, max(x2 - x1, 8), max(y2 - y1, 8))
+            for word in _FILTER_PROFESSIONS:
+                if word in text and word not in professions:
+                    professions[word] = target
     return FilterDialog(
         profession_buttons=professions,
         confirm_button=confirm_button,
         reset_button=profile.regions.get("filter_dialog_reset_button"),
-        attribute_buttons=attributes or None,
     )
 
 

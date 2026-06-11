@@ -467,10 +467,8 @@ class TrainerPolicy:
         empty_slots = [slot for slot in setup.slots if not slot.occupied]
         if empty_slots:
             first = sorted(empty_slots, key=lambda slot: slot.index)[0]
-            # 赛前刻印流程: 记住当前进的是哪个槽(选卡按槽各自的配置序号),
-            # 并重置上一个槽留下的筛选阶段。没配 prejourney 时这记录无人消费。
+            # 记录当前槽号(星标状态改为画面像素检测, 无需在这里重置标记)。
             self.prejourney_progress.extra["current_imprint_slot"] = first.index
-            self.prejourney_progress.extra.pop("imprint_stage", None)
             return Action("click", first.target, f"open blessing slot {first.index}")
         if setup.can_confirm:
             return Action("click", setup.confirm_button, "all blessing slots filled, confirm")

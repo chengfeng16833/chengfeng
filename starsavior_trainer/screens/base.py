@@ -75,6 +75,7 @@ class DelegatingScreenHandler:
         anchor_confidence: float = 1.0,
         parse_fn: Optional[Callable[..., object | None]] = None,
         parse_needs_image: bool = False,
+        parse_needs_ocr: bool = False,
         ocr_prefixes: Optional[list[str]] = None,
     ) -> None:
         self.screen = screen
@@ -84,6 +85,9 @@ class DelegatingScreenHandler:
         self._anchor_confidence = anchor_confidence
         self._parse_fn = parse_fn
         self._parse_needs_image = parse_needs_image
+        # parse 需要 OCR 引擎做 bbox 级文字定位(read_lines)时置 True ——
+        # 滚动弹窗里按钮位置不固定, 用「找到目标词→点词中心」代替固定坐标。
+        self._parse_needs_ocr = parse_needs_ocr
         # Region-name prefixes to OCR before parsing (used by the live loop).
         # None means this screen needs no OCR payload (policy clicks a fixed button).
         self.ocr_prefixes = ocr_prefixes
@@ -98,9 +102,12 @@ class DelegatingScreenHandler:
         region_texts: object,
         profile: RegionProfile,
         image: Optional[Image.Image] = None,
+        ocr: object | None = None,
     ) -> object | None:
         if self._parse_fn is None:
             return None
+        if self._parse_needs_ocr:
+            return self._parse_fn(region_texts, profile, image, ocr)
         if self._parse_needs_image:
             return self._parse_fn(region_texts, profile, image)
         return self._parse_fn(region_texts, profile)
