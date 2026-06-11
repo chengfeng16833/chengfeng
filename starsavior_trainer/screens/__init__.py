@@ -31,14 +31,21 @@ from starsavior_trainer.classifier import (
     _has_rest_submenu_signature,
     _has_reward_signature,
     _has_shop_signature,
+    _has_support_card_detail_signature,
+    _has_support_friend_list_signature,
+    _has_support_picker_signature,
     _has_training_hub_shop_signature,
     _has_training_select_signature,
 )
 from starsavior_trainer.prejourney import (
     decide_filter_dialog,
     decide_initial_with_difficulty,
+    decide_journey_start_prejourney,
     decide_main_menu_panel,
     decide_main_screen,
+    decide_support_card_detail,
+    decide_support_friend_list,
+    decide_support_picker,
 )
 from starsavior_trainer.models import (
     Action,
@@ -84,6 +91,9 @@ from starsavior_trainer.screen_reader import (
     parse_relic_choice,
     parse_rest_submenu,
     parse_shop,
+    parse_support_card_detail,
+    parse_support_friend_list,
+    parse_support_picker,
     parse_skill_select,
     parse_training_direction,
     parse_training_hub,
@@ -124,6 +134,10 @@ def _decide_blessing_choice(obs, state, policy):
 def _decide_journey_start(obs, state, policy):
     if not isinstance(obs.payload, JourneyStart):
         return Action("pause", None, "journey start screen missing start button")
+    # 赛前钩子: 先切卡组/接好友卡(返回 None = 没有待办), 再走旧「点旅程起点」。
+    prejourney_action = decide_journey_start_prejourney(obs.payload, state, policy)
+    if prejourney_action is not None:
+        return prejourney_action
     return policy.decide_journey_start(obs.payload)
 
 
@@ -354,7 +368,8 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
     ),
     Screen.JOURNEY_START: DelegatingScreenHandler(
         Screen.JOURNEY_START, _decide_journey_start,
-        parse_fn=parse_journey_start, ocr_prefixes=["journey_start"],
+        # parse_needs_image: 卡组指示圆点要看像素亮度(赛前卡组切换)。
+        parse_fn=parse_journey_start, parse_needs_image=True, ocr_prefixes=["journey_start"],
     ),
     Screen.CONFIRM_DIALOG: DelegatingScreenHandler(
         Screen.CONFIRM_DIALOG, _decide_confirm_dialog,
@@ -419,6 +434,23 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         Screen.MAIN_MENU_PANEL, decide_main_menu_panel, priority=12,
         anchor_fn=_has_main_menu_panel_signature, anchor_confidence=1.0,
         parse_fn=parse_main_menu_panel, ocr_prefixes=["main_menu_panel"],
+    ),
+    # 好友卡流程三画面(标题与旅程起点共用): 好友卡墙(可借用次数)必须排在
+    # 支援卡选择(可借用)之前, 否则「可借用次数」也含「可借用」会被截胡。
+    Screen.SUPPORT_FRIEND_LIST: DelegatingScreenHandler(
+        Screen.SUPPORT_FRIEND_LIST, decide_support_friend_list, priority=13,
+        anchor_fn=_has_support_friend_list_signature, anchor_confidence=1.0,
+        parse_fn=parse_support_friend_list, ocr_prefixes=["support_friend"],
+    ),
+    Screen.SUPPORT_PICKER: DelegatingScreenHandler(
+        Screen.SUPPORT_PICKER, decide_support_picker, priority=14,
+        anchor_fn=_has_support_picker_signature, anchor_confidence=1.0,
+        parse_fn=parse_support_picker, ocr_prefixes=["support_picker"],
+    ),
+    Screen.SUPPORT_CARD_DETAIL: DelegatingScreenHandler(
+        Screen.SUPPORT_CARD_DETAIL, decide_support_card_detail, priority=15,
+        anchor_fn=_has_support_card_detail_signature, anchor_confidence=1.0,
+        parse_fn=parse_support_card_detail, ocr_prefixes=["support_card_detail"],
     ),
     Screen.GAME_MENU: DelegatingScreenHandler(
         Screen.GAME_MENU, _decide_game_menu, priority=2,

@@ -57,6 +57,10 @@ _FAST_ANCHORS: tuple[str, ...] = (
     # 通用筛选弹窗(覆盖在角色选择/刻印操作上, 必须先于底层画面的标题锚命中)。
     "filter_dialog_anchor_title",
     "filter_dialog_profession_row",
+    # 好友卡流程三画面(标题与旅程起点共用, 靠各自特异锚区分)。
+    "support_friend_list_anchor",
+    "support_picker_borrow_anchor",
+    "support_card_detail_anchor",
 )
 
 
@@ -374,6 +378,9 @@ ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
     Screen.MAIN_SCREEN: ["main_screen_menu_column"],
     Screen.MAIN_MENU_PANEL: ["main_menu_panel_grid_text"],
     Screen.FILTER_DIALOG: ["filter_dialog_anchor_title", "filter_dialog_profession_row"],
+    Screen.SUPPORT_PICKER: ["support_picker_borrow_anchor"],
+    Screen.SUPPORT_FRIEND_LIST: ["support_friend_list_anchor"],
+    Screen.SUPPORT_CARD_DETAIL: ["support_card_detail_anchor"],
     Screen.INITIAL: ["route_select_anchor_title", "route_select_route_title", "start_button"],
     Screen.CHARACTER_SELECT: ["character_select_anchor_title"],
     Screen.BLESSING_SETUP: ["blessing_setup_anchor_title"],
@@ -723,6 +730,28 @@ def _has_filter_dialog_signature(anchors: dict[str, str]) -> bool:
     if "筛选" not in title:
         return False
     return any(word in row for word in ("坦克", "突击者", "游侠", "术师", "刺客", "辅助"))
+
+
+def _has_support_friend_list_signature(anchors: dict[str, str]) -> bool:
+    # 好友支援卡墙: 顶部「可借用次数: N/N」。必须含「次数」, 用于和支援卡选择
+    # 界面(只有「可借用」标签)区分; 有序检查时本签名排在 SUPPORT_PICKER 之前。
+    text = anchors.get("support_friend_list_anchor", "")
+    return "次数" in text and "可借用" in text
+
+
+def _has_support_picker_signature(anchors: dict[str, str]) -> bool:
+    # 支援卡选择界面: 左上「可借用」标签(没有这三个字 = 不能接好友卡, decide 会
+    # 点返回退出)。锚区域只框标签处, 读到「可借用」即认; 「次数」由上面的好友卡墙
+    # 签名先行截胡。
+    text = anchors.get("support_picker_borrow_anchor", "")
+    return "可借用" in text and "次数" not in text
+
+
+def _has_support_card_detail_signature(anchors: dict[str, str]) -> bool:
+    # 支援卡详情: 右侧标签列 旅程效果/专属效果。两词至少命中一个 + 必须有「效果」,
+    # 避免单字噪声; 该画面只在好友卡流程出现, 风险低。
+    text = anchors.get("support_card_detail_anchor", "")
+    return any(word in text for word in ("旅程效果", "专属效果", "训练效果"))
 
 
 def _has_game_menu_signature(anchors: dict[str, str]) -> bool:

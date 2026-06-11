@@ -30,6 +30,10 @@ from starsavior_trainer.models import (
     Rect,
     RelicChoice,
     RelicOption,
+    SupportCardDetail,
+    SupportFriendCard,
+    SupportFriendList,
+    SupportPicker,
     RestSubmenu,
     ShopItem,
     ShopScene,
@@ -695,6 +699,7 @@ def parse_main_menu_panel(
 def parse_journey_start(
     region_texts: Iterable[RegionText],
     profile: RegionProfile,
+    image: Image.Image | None = None,
 ) -> JourneyStart | None:
     texts = {item.name: item.text for item in region_texts}
     start_button = profile.regions.get("journey_start_button")
@@ -705,11 +710,94 @@ def parse_journey_start(
         for index in range(1, 6)
         if (rect := profile.regions.get(f"journey_start_arcana_slot_{index}")) is not None
     ]
+    current_deck = None
+    dots_rect = profile.regions.get("journey_start_deck_dots")
+    if image is not None and dots_rect is not None:
+        current_deck = _detect_active_deck_dot(image, dots_rect)
     return JourneyStart(
         start_button=start_button,
         auto_journey_button=profile.regions.get("journey_start_auto_journey_button"),
         arcana_slots=arcana_slots,
+        current_deck=current_deck,
+        previous_button=profile.regions.get("journey_start_previous_button"),
+        next_button=profile.regions.get("journey_start_next_button"),
     )
+
+
+def _detect_active_deck_dot(image: Image.Image, dots_rect: Rect) -> int | None:
+    """5 个卡组指示圆点横条均分 5 段, 取最亮段为当前卡组(1-5)。
+
+    亮点是白色高亮、暗点是半透明灰; 最亮段与平均的差太小说明检测不可信
+    (动画/截图时机), 返回 None 让决策层跳过卡组切换而不是乱点。
+    """
+    try:
+        strip = image.crop(
+            (dots_rect.x, dots_rect.y, dots_rect.x + dots_rect.width, dots_rect.y + dots_rect.height)
+        ).convert("L")
+    except Exception:
+        return None
+    if strip.width < 5 or strip.height < 1:
+        return None
+    segment = strip.width // 5
+    means: list[float] = []
+    for i in range(5):
+        box = strip.crop((i * segment, 0, (i + 1) * segment, strip.height))
+        pixels = list(box.getdata())
+        means.append(sum(pixels) / len(pixels) if pixels else 0.0)
+    brightest = max(range(5), key=lambda i: means[i])
+    rest = [m for i, m in enumerate(means) if i != brightest]
+    if not rest or means[brightest] - (sum(rest) / len(rest)) < 25:
+        return None
+    return brightest + 1
+
+
+def parse_support_picker(
+    region_texts: Iterable[RegionText],
+    profile: RegionProfile,
+) -> SupportPicker | None:
+    """支援卡选择界面: 「可借用」标签 OCR 到才算可接好友卡。"""
+    back_button = profile.regions.get("support_picker_back_button")
+    if back_button is None:
+        return None
+    texts = {item.name: item.text for item in region_texts}
+    has_borrow = "可借用" in texts.get("support_picker_borrow_anchor", "")
+    return SupportPicker(
+        back_button=back_button,
+        friend_button=profile.regions.get("support_picker_friend_button"),
+        has_borrow=has_borrow,
+    )
+
+
+def parse_support_friend_list(
+    region_texts: Iterable[RegionText],
+    profile: RegionProfile,
+) -> SupportFriendList | None:
+    """好友支援卡墙: 第一排 6 张卡的名牌 OCR + 卡中心点击位。"""
+    texts = {item.name: item.text for item in region_texts}
+    cards: list[SupportFriendCard] = []
+    for index in range(1, 7):
+        target = profile.regions.get(f"support_friend_card_{index}")
+        if target is None:
+            continue
+        name = normalize_ocr_text(texts.get(f"support_friend_name_{index}", ""))
+        if name:
+            cards.append(SupportFriendCard(name=name, target=target))
+    if not cards and profile.regions.get("support_friend_card_1") is None:
+        return None
+    return SupportFriendList(
+        cards=cards,
+        back_button=profile.regions.get("support_friend_back_button"),
+    )
+
+
+def parse_support_card_detail(
+    region_texts: Iterable[RegionText],
+    profile: RegionProfile,
+) -> SupportCardDetail | None:
+    select_button = profile.regions.get("support_card_detail_select")
+    if select_button is None:
+        return None
+    return SupportCardDetail(select_button=select_button)
 
 
 def parse_confirm_dialog(

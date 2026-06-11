@@ -352,6 +352,149 @@ class ImprintFlowTest(unittest.TestCase):
         self.assertNotIn("imprint_stage", policy.prejourney_progress.extra)
 
 
+class SupportDeckAndFriendTest(unittest.TestCase):
+    """支援卡: 卡组切换(圆点检测)+ 好友卡借用流程。"""
+
+    @staticmethod
+    def _journey(current_deck: int | None) -> "JourneyStart":
+        from starsavior_trainer.models import JourneyStart
+
+        return JourneyStart(
+            start_button=Rect(1932, 1306, 535, 75),
+            arcana_slots=[Rect(1400 + i * 200, 443, 180, 328) for i in range(5)],
+            current_deck=current_deck,
+            previous_button=Rect(1340, 620, 62, 92),
+            next_button=Rect(2420, 620, 62, 92),
+        )
+
+    def test_deck_switch_clicks_next_until_target(self) -> None:
+        policy = TrainerPolicy()
+        state = _state(support_deck=4)
+        action = policy.decide(
+            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=2))
+        )
+        self.assertEqual(action.target, Rect(2420, 620, 62, 92))  # next
+        self.assertIn("2 -> 4", action.reason)
+
+    def test_deck_switch_clicks_previous_when_target_lower(self) -> None:
+        policy = TrainerPolicy()
+        state = _state(support_deck=1)
+        action = policy.decide(
+            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=3))
+        )
+        self.assertEqual(action.target, Rect(1340, 620, 62, 92))  # previous
+
+    def test_friend_card_entry_after_deck_ok(self) -> None:
+        policy = TrainerPolicy()
+        state = _state(support_deck=2, friend_support_name="B站老顾不烦")
+        action = policy.decide(
+            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=2))
+        )
+        # 卡组已对 → 点最右卡位进支援卡选择界面。
+        self.assertEqual(action.target, Rect(1400 + 4 * 200, 443, 180, 328))
+
+    def test_journey_start_clicked_when_nothing_pending(self) -> None:
+        policy = TrainerPolicy()
+        policy.prejourney_progress.friend_card_done = True
+        state = _state(support_deck=2, friend_support_name="B站老顾不烦")
+        action = policy.decide(
+            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=2))
+        )
+        self.assertEqual(action.target, Rect(1932, 1306, 535, 75))  # 旅程起点
+
+    def test_unknown_deck_skips_switch(self) -> None:
+        # 圆点检测不出 → 不乱点切换; 没有好友配置 → 直接旅程起点。
+        policy = TrainerPolicy()
+        state = _state(support_deck=4)
+        action = policy.decide(
+            state, Observation(Screen.JOURNEY_START, 0.95, payload=self._journey(current_deck=None))
+        )
+        self.assertEqual(action.target, Rect(1932, 1306, 535, 75))
+
+    def test_support_picker_with_borrow_opens_friend_list(self) -> None:
+        from starsavior_trainer.models import SupportPicker
+
+        policy = TrainerPolicy()
+        state = _state(friend_support_name="B站老顾不烦")
+        payload = SupportPicker(
+            back_button=Rect(60, 105, 90, 85),
+            friend_button=Rect(100, 430, 290, 80),
+            has_borrow=True,
+        )
+        action = policy.decide(state, Observation(Screen.SUPPORT_PICKER, 0.95, payload=payload))
+        self.assertEqual(action.target, Rect(100, 430, 290, 80))
+
+    def test_support_picker_without_borrow_backs_out_and_skips(self) -> None:
+        from starsavior_trainer.models import SupportPicker
+
+        policy = TrainerPolicy()
+        state = _state(friend_support_name="B站老顾不烦")
+        payload = SupportPicker(back_button=Rect(60, 105, 90, 85), friend_button=None, has_borrow=False)
+        action = policy.decide(state, Observation(Screen.SUPPORT_PICKER, 0.95, payload=payload))
+        self.assertEqual(action.target, Rect(60, 105, 90, 85))
+        self.assertTrue(policy.prejourney_progress.friend_card_done)
+
+    def test_friend_list_picks_matching_card(self) -> None:
+        from starsavior_trainer.models import SupportFriendCard, SupportFriendList
+
+        policy = TrainerPolicy()
+        state = _state(friend_support_name="B站老顾不烦")
+        payload = SupportFriendList(
+            cards=[
+                SupportFriendCard(name="Daybreaker", target=Rect(858, 850, 250, 250)),
+                SupportFriendCard(name="B站老顾不烦", target=Rect(490, 850, 250, 250)),
+            ]
+        )
+        action = policy.decide(state, Observation(Screen.SUPPORT_FRIEND_LIST, 0.95, payload=payload))
+        self.assertEqual(action.target, Rect(490, 850, 250, 250))
+
+    def test_friend_list_pauses_when_not_found(self) -> None:
+        from starsavior_trainer.models import SupportFriendCard, SupportFriendList
+
+        policy = TrainerPolicy()
+        state = _state(friend_support_name="B站老顾不烦")
+        payload = SupportFriendList(
+            cards=[SupportFriendCard(name="Daybreaker", target=Rect(858, 850, 250, 250))]
+        )
+        action = policy.decide(state, Observation(Screen.SUPPORT_FRIEND_LIST, 0.95, payload=payload))
+        self.assertEqual(action.kind, "pause")
+
+    def test_card_detail_confirms_and_marks_done(self) -> None:
+        from starsavior_trainer.models import SupportCardDetail
+
+        policy = TrainerPolicy()
+        state = _state(friend_support_name="B站老顾不烦")
+        payload = SupportCardDetail(select_button=Rect(2210, 990, 250, 95))
+        action = policy.decide(state, Observation(Screen.SUPPORT_CARD_DETAIL, 0.95, payload=payload))
+        self.assertEqual(action.target, Rect(2210, 990, 250, 95))
+        self.assertTrue(policy.prejourney_progress.friend_card_done)
+
+
+class DeckDotDetectionTest(unittest.TestCase):
+    """卡组指示圆点检测: 5 段取最亮; 区分度不足返回 None。"""
+
+    def test_detects_third_dot(self) -> None:
+        from PIL import Image as PILImage
+
+        from starsavior_trainer.screen_reader import _detect_active_deck_dot
+
+        strip = PILImage.new("RGB", (250, 40), (40, 40, 60))
+        for x in range(100, 150):  # 第 3 段(50px/段)涂亮白
+            for y in range(40):
+                strip.putpixel((x, y), (240, 240, 250))
+        image = PILImage.new("RGB", (2560, 1440), (10, 10, 20))
+        image.paste(strip, (1800, 940))
+        self.assertEqual(_detect_active_deck_dot(image, Rect(1800, 940, 250, 40)), 3)
+
+    def test_uniform_strip_returns_none(self) -> None:
+        from PIL import Image as PILImage
+
+        from starsavior_trainer.screen_reader import _detect_active_deck_dot
+
+        image = PILImage.new("RGB", (2560, 1440), (60, 60, 70))
+        self.assertIsNone(_detect_active_deck_dot(image, Rect(1800, 940, 250, 40)))
+
+
 class ImprintIndexTest(unittest.TestCase):
     """刻印序号 → 行列换算(网格每排 5 个)。迁移计划指定用例。"""
 

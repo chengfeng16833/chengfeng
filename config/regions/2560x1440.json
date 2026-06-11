@@ -427,6 +427,30 @@
     "blessing_attr_filter_button": [1380, 195, 130, 90],
     "blessing_grid_cell_1_1": [224, 480, 300, 220],
     "blessing_grid_cell_1_2": [544, 480, 300, 220],
-    "blessing_grid_cell_2_1": [224, 752, 300, 220]
+    "blessing_grid_cell_2_1": [224, 752, 300, 220],
+
+    "journey_start_deck_dots": [1800, 940, 260, 40],
+
+    "support_picker_borrow_anchor": [100, 355, 290, 75],
+    "support_picker_friend_button": [100, 430, 290, 80],
+    "support_picker_back_button": [60, 105, 90, 85],
+
+    "support_friend_list_anchor": [480, 230, 500, 70],
+    "support_friend_back_button": [60, 105, 90, 85],
+    "support_friend_name_1": [480, 620, 250, 60],
+    "support_friend_name_2": [848, 620, 250, 60],
+    "support_friend_name_3": [1216, 620, 250, 60],
+    "support_friend_name_4": [1584, 620, 250, 60],
+    "support_friend_name_5": [1952, 620, 250, 60],
+    "support_friend_name_6": [2320, 620, 230, 60],
+    "support_friend_card_1": [490, 850, 250, 250],
+    "support_friend_card_2": [858, 850, 250, 250],
+    "support_friend_card_3": [1226, 850, 250, 250],
+    "support_friend_card_4": [1594, 850, 250, 250],
+    "support_friend_card_5": [1962, 850, 250, 250],
+    "support_friend_card_6": [2330, 850, 220, 250],
+
+    "support_card_detail_anchor": [1310, 470, 240, 160],
+    "support_card_detail_select": [2210, 990, 250, 95]
   }
 }

@@ -37,6 +37,13 @@ class Screen(str, Enum):
     # 同一个 UI 组件出现在两处: 角色选择点漏斗(选职业, docx: 战士=UI「突击者」),
     # 刻印操作点属性筛选(选 力量/体力/韧性 等)。decide 按赛前进度决定点什么。
     FILTER_DIALOG = "filter_dialog"
+    # 支援卡选择界面(好友卡入口): 左上「可借用」标签 + 好友按钮。没有「可借用」
+    # 三个字时无法接好友卡, 直接点左上 < 退出(docx 6.1)。标题与旅程起点共用。
+    SUPPORT_PICKER = "support_picker"
+    # 好友支援卡墙(顶部「可借用次数: N/N」), OCR 卡名牌找配置的好友名。
+    SUPPORT_FRIEND_LIST = "support_friend_list"
+    # 支援卡详情(旅程效果/专属效果 标签列 + 右下蓝色「选择」)。
+    SUPPORT_CARD_DETAIL = "support_card_detail"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or
@@ -266,6 +273,39 @@ class JourneyStart:
     start_button: Rect
     auto_journey_button: Rect | None = None
     arcana_slots: list[Rect] | None = None
+    # ---- 赛前流程(卡组切换+好友卡)新增, 全部可缺省 ----
+    # 5 个卡组指示圆点中当前亮的是第几个(1-5); 检测不出/区域未配置 → None。
+    current_deck: int | None = None
+    previous_button: Rect | None = None
+    next_button: Rect | None = None
+
+
+@dataclass(frozen=True)
+class SupportPicker:
+    """支援卡选择界面: 「可借用」存在才可接好友卡, 否则点返回退出。"""
+
+    back_button: Rect
+    friend_button: Rect | None = None
+    has_borrow: bool = False
+
+
+@dataclass(frozen=True)
+class SupportFriendCard:
+    name: str
+    target: Rect
+
+
+@dataclass(frozen=True)
+class SupportFriendList:
+    """好友支援卡墙: 名牌 OCR + 卡中心点击位(第一排, 好友通常置顶)。"""
+
+    cards: list[SupportFriendCard]
+    back_button: Rect | None = None
+
+
+@dataclass(frozen=True)
+class SupportCardDetail:
+    select_button: Rect
 
 
 @dataclass(frozen=True)

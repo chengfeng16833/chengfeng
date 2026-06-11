@@ -20,10 +20,14 @@ from starsavior_trainer.models import (
     CharacterSelect,
     FilterDialog,
     GameState,
+    JourneyStart,
     MainMenuPanel,
     MainScreen,
     Observation,
     Rect,
+    SupportCardDetail,
+    SupportFriendList,
+    SupportPicker,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - 仅类型标注
@@ -279,6 +283,97 @@ def _grid_cell(choice: BlessingChoice, row: int, col: int) -> Rect | None:
         origin.width,
         origin.height,
     )
+
+
+# ---------------------------------------------------------------------------
+# 支援卡(卡组切换 + 好友卡, docx 6/6.1/7)
+# ---------------------------------------------------------------------------
+
+
+def decide_journey_start_prejourney(
+    journey: JourneyStart, state: GameState, policy: "TrainerPolicy"
+) -> Action | None:
+    """支援卡界面(旅程起点)的赛前钩子: 先切卡组、再接好友卡, 然后让位旧逻辑。
+
+    返回 None = 没有赛前待办(或无配置), 调用方点「旅程起点」开跑。
+    """
+    pre = state.prejourney
+    if pre is None:
+        return None
+    progress = progress_of(policy)
+
+    # 1) 卡组切换: 圆点检测出当前卡组且与配置不一致 → 按方向点 < / >。
+    target_deck = int(getattr(pre, "support_deck", 1) or 1)
+    if 1 <= target_deck <= 5 and journey.current_deck is not None and journey.current_deck != target_deck:
+        if target_deck > journey.current_deck:
+            if journey.next_button is not None:
+                return Action(
+                    "click", journey.next_button,
+                    f"switch support deck {journey.current_deck} -> {target_deck} (next)",
+                )
+        elif journey.previous_button is not None:
+            return Action(
+                "click", journey.previous_button,
+                f"switch support deck {journey.current_deck} -> {target_deck} (previous)",
+            )
+
+    # 2) 好友卡: 配置了好友名且本局还没接 → 点最右卡位进支援卡选择界面。
+    friend = str(getattr(pre, "friend_support_name", "") or "").strip()
+    if friend and not progress.friend_card_done:
+        slots = journey.arcana_slots or []
+        if slots:
+            return Action("click", slots[-1], f"open support picker to borrow friend card ({friend})")
+
+    return None
+
+
+def decide_support_picker(obs: Observation, state: GameState, policy: "TrainerPolicy") -> Action:
+    """支援卡选择界面: 有「可借用」→ 点好友按钮; 没有 → 点返回退出(不能借)。"""
+    if not isinstance(obs.payload, SupportPicker):
+        return Action("pause", None, "support picker missing payload")
+    payload = obs.payload
+    progress = progress_of(policy)
+    pre = state.prejourney
+    friend = str(getattr(pre, "friend_support_name", "") or "").strip() if pre else ""
+    if not friend or progress.friend_card_done:
+        # 不该在这个界面(没配好友/已借完) → 返回退出, 自愈。
+        return Action("click", payload.back_button, "support picker: nothing to do, back out")
+    if payload.has_borrow and payload.friend_button is not None:
+        return Action("click", payload.friend_button, "support picker: open friend card list")
+    # 没有「可借用」= 本局借不了(次数用完/无好友), 跳过好友卡直接回去开跑。
+    progress.friend_card_done = True
+    return Action("click", payload.back_button, "support picker: borrow unavailable, skip friend card")
+
+
+def decide_support_friend_list(
+    obs: Observation, state: GameState, policy: "TrainerPolicy"
+) -> Action:
+    """好友支援卡墙: OCR 名牌找配置好友名(含即可), 点卡中心进详情。"""
+    if not isinstance(obs.payload, SupportFriendList):
+        return Action("pause", None, "support friend list missing payload")
+    pre = state.prejourney
+    friend = str(getattr(pre, "friend_support_name", "") or "").strip() if pre else ""
+    payload = obs.payload
+    if not friend:
+        if payload.back_button is not None:
+            return Action("click", payload.back_button, "friend list: no friend configured, back out")
+        return Action("pause", None, "friend list: no friend configured")
+    for card in payload.cards:
+        if friend in card.name or card.name in friend:
+            return Action("click", card.target, f"friend list: pick {card.name}")
+    # 第一排没找到: 好友通常置顶, 找不到先 pause 留人工看(滚动逻辑待实机校准)。
+    return Action("pause", None, f"friend list: {friend} not found in first row")
+
+
+def decide_support_card_detail(
+    obs: Observation, state: GameState, policy: "TrainerPolicy"
+) -> Action:
+    """支援卡详情: 点「选择」确认借卡, 标记好友卡完成。"""
+    if not isinstance(obs.payload, SupportCardDetail):
+        return Action("pause", None, "support card detail missing payload")
+    progress = progress_of(policy)
+    progress.friend_card_done = True
+    return Action("click", obs.payload.select_button, "support card detail: confirm borrow")
 
 
 def decide_initial_with_difficulty(
