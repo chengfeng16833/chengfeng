@@ -446,6 +446,9 @@ def main() -> None:
     same_pause_reason: str | None = None
     same_pause_count = 0
     force_detailed_classify = False
+    # 粘性复核: 看门狗纠正发生后, 连续 N 帧继续用 Paddle 分类(误判画面通常
+    # 静止多帧, 只纠正一帧的话下一帧又被快引擎认错 — 实跑教训)。
+    detailed_sticky = 0
     try:
         while args.max_iterations == 0 or iteration < args.max_iterations:
             # Mouse-corner emergency stop, checked FIRST every iteration. The most
@@ -491,12 +494,20 @@ def main() -> None:
             # 省掉整屏 OCR(提速3); 否则照常分类。
             _t0 = time.perf_counter()
             frame_sig = _frame_signature(screenshot)
-            if force_detailed_classify and (args.hybrid_mode or args.use_paddle):
-                # 看门狗触发: 用 Paddle(准确)复核, 纠正快引擎的自信误判;
-                # 必须先于帧哈希复用(否则错误分类被零成本延续)。
+            if (force_detailed_classify or detailed_sticky > 0) and (args.hybrid_mode or args.use_paddle):
+                # 看门狗触发/粘性期: 用 Paddle(准确)复核, 纠正快引擎的自信误判;
+                # 必须先于帧哈希复用(否则错误分类被零成本延续)。纠正真的发生时
+                # 粘住 8 帧 — 误判画面通常静止多帧, 只纠正一帧下帧又会被认错。
+                triggered = force_detailed_classify
                 force_detailed_classify = False
+                if detailed_sticky > 0:
+                    detailed_sticky -= 1
                 observation = classify_hybrid(screenshot, profile, ocr)
-                print(f"  (watchdog: detailed re-classify -> {observation.screen.value})")
+                if triggered and observation.screen != last_screen:
+                    detailed_sticky = 8
+                    print(f"  (watchdog: corrected {last_screen} -> {observation.screen.value}, sticky 8)")
+                elif triggered:
+                    print(f"  (watchdog: detailed re-classify confirmed {observation.screen.value})")
             elif (
                 _frames_similar(frame_sig, last_frame_sig)
                 and last_screen is not None
@@ -697,16 +708,17 @@ def main() -> None:
                 consecutive_character_confirms = 0
                 last_character_click_target = None
             timer.record("decide", time.perf_counter() - _t0)
-            # 误判看门狗: 连续同因 pause/scroll ≥4 → 下一帧强制 Paddle 复核分类。
-            # scroll 也算: 支援卡画面被误判成选角时, bot 是不停滚动找人而非
-            # pause(实跑教训); 真选角画面只是每4次滚动多付一次复核, 无害。
+            # 误判看门狗: 连续同因 pause ≥4 / scroll ≥2 → 下一帧强制 Paddle 复核。
+            # scroll 阈值更低: 误判画面上的拖拽有真实副作用(实跑教训: 在支援卡
+            # 画面上拖, 被游戏当卡组滑动, 把用户配好的卡组滑走 → 旅程起点变灰)。
             if action.kind in ("pause", "scroll"):
                 if action.reason == same_pause_reason:
                     same_pause_count += 1
                 else:
                     same_pause_reason = action.reason
                     same_pause_count = 1
-                if same_pause_count >= 4:
+                threshold = 2 if action.kind == "scroll" else 4
+                if same_pause_count >= threshold:
                     force_detailed_classify = True
                     same_pause_count = 0
             else:
