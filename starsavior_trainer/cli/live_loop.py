@@ -100,7 +100,7 @@ logger = get_logger("live_loop")
 # reward popups / dialogue / post-training quickly (the user's "keep clicking to
 # advance" request) — but still classifies before every click, so we never click
 # blindly into the screen that comes next.
-_ADVANCE_SCREENS = frozenset({Screen.DIALOGUE, Screen.POST_TRAINING, Screen.REWARD})
+_ADVANCE_SCREENS = frozenset({Screen.DIALOGUE, Screen.POST_TRAINING, Screen.REWARD, Screen.GOAL_LIST})
 _ADVANCE_SLEEP = 0.35
 # TRAINING_SELECT: the inspector clicks 力量/体力/韧性 in quick succession on the
 # SAME screen (no transition) — it only needs the preview gain to render, not the
@@ -430,19 +430,31 @@ def main() -> None:
                 unknown_path = Path("screenshots/live_unknown_latest.png")
                 save_image(screenshot, unknown_path)
                 consecutive_unknown += 1
-                # Most unknown frames are transition/display screens (loading splash,
-                # reward display, dialogue) that either auto-advance or just need a
-                # click to continue. Click the screen centre to push through; only
-                # pause once it persists, so we never click blindly forever.
-                if args.execute and consecutive_unknown <= 4:
+                # 2026-06-12 提速(用户反馈: 剧情/展示页 bot 干等游戏自动跳过):
+                # unknown 大多是转场/CG/展示页, 推进点几乎都在「底部中央」
+                # (点击以继续 祖传位置: 获得奖励/目标列表/评鉴战结果同位),
+                # 屏幕正中常是无效文字区 —— 底部为主, 每 3 次插一次中心兜底。
+                # 上限 40(原 4 次太怂, 目标列表那类页面 4 次点不中就干等);
+                # 真新画面卡死由监控的连续 unknown 告警兜底, 不靠这里放弃。
+                if args.execute and consecutive_unknown <= 40:
                     activate_window(client_window.hwnd)
-                    cx = client_window.rect.x + client_window.rect.width // 2
-                    cy = client_window.rect.y + client_window.rect.height // 2
-                    executor.execute(Action("click", Rect(cx, cy, 1, 1), "unknown: click centre to advance"))
-                    print(f"  unknown screen, click centre to advance ({consecutive_unknown})")
+                    if consecutive_unknown % 3 == 0:
+                        cx = client_window.rect.x + client_window.rect.width // 2
+                        cy = client_window.rect.y + client_window.rect.height // 2
+                        spot = "centre"
+                    else:
+                        cx = client_window.rect.x + client_window.rect.width // 2
+                        cy = client_window.rect.y + int(client_window.rect.height * 0.88)
+                        spot = "bottom"
+                    executor.execute(
+                        Action("click", Rect(cx, cy, 1, 1), f"unknown: click {spot} to advance", repeat=2)
+                    )
+                    print(f"  unknown screen, click {spot} to advance ({consecutive_unknown})")
+                    # 转场/展示页用快节奏重试, 不睡满 --interval(提速主力)。
+                    time.sleep(_ADVANCE_SLEEP)
                 else:
                     print(f"  unknown screen, pausing (consecutive={consecutive_unknown})")
-                time.sleep(args.interval)
+                    time.sleep(args.interval)
                 continue
             consecutive_unknown = 0
 
