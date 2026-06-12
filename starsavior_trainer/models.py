@@ -55,6 +55,8 @@ class Screen(str, Enum):
     # 评鉴战结算页(FAIL/胜利: 很可惜,落败了… + 重新挑战/确认)。落败时点确认
     # 接受继续(不重打); 误判成训练大厅点空白会无限循环(实跑卡死点9)。
     BATTLE_RESULT = "battle_result"
+    # 终局大厅: 右侧只剩「旅程结束」按钮(可习得潜质)。点它进终局结算/学技能。
+    JOURNEY_END = "journey_end"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or

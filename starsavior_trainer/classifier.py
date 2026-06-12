@@ -82,6 +82,8 @@ _FAST_ANCHORS: tuple[str, ...] = (
     "training_hub_action_training",
     "training_hub_action_commission",
     "training_hub_action_rest",
+    # 终局大厅「旅程结束」出口。
+    "journey_end_button",
 )
 
 
@@ -405,6 +407,7 @@ ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
     Screen.GOAL_LIST: ["goal_list_subtitle"],
     Screen.SKIP_BATTLE_CONFIRM: ["skip_battle_confirm_text"],
     Screen.BATTLE_RESULT: ["battle_result_text", "battle_result_buttons"],
+    Screen.JOURNEY_END: ["journey_end_button"],
     Screen.INITIAL: ["route_select_anchor_title", "route_select_route_title", "start_button"],
     Screen.CHARACTER_SELECT: ["character_select_anchor_title"],
     Screen.BLESSING_SETUP: ["blessing_setup_anchor_title"],
@@ -788,6 +791,13 @@ def _has_skip_battle_confirm_signature(anchors: dict[str, str]) -> bool:
         return True
     # v3 放弃战斗确认(FAIL 结算页点确认后弹出): 确定要放弃战斗吗?
     return "放弃战斗" in text
+
+
+def _has_journey_end_signature(anchors: dict[str, str]) -> bool:
+    # 终局大厅: 右侧「旅程结束」标签(常规动作菜单已消失, 只剩这一个出口)。
+    return "旅程结束" in anchors.get("journey_end_button", "") or "结束" in anchors.get(
+        "journey_end_button", ""
+    )
 
 
 def _has_battle_result_signature(anchors: dict[str, str]) -> bool:

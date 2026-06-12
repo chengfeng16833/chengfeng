@@ -26,6 +26,7 @@ from starsavior_trainer.classifier import (
     _has_game_menu_signature,
     _has_goal_list_signature,
     _has_initial_signature,
+    _has_journey_end_signature,
     _has_main_menu_panel_signature,
     _has_main_screen_signature,
     _has_region_move_signature,
@@ -462,6 +463,16 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         priority=1,
         anchor_fn=_has_skip_battle_confirm_signature, anchor_confidence=1.0,
         parse_fn=parse_skip_battle_confirm, ocr_prefixes=["skip_battle_confirm"],
+    ),
+    # 终局大厅: 点「旅程结束」进结算/学技能。priority=1 抢在大厅签名之前
+    # (终局画面没有训练/委托菜单, 大厅签名不会命中, 但保险起见排前)。
+    Screen.JOURNEY_END: DelegatingScreenHandler(
+        Screen.JOURNEY_END,
+        lambda obs, state, policy: Action(
+            "click", policy.config.journey_end_button, "journey end, click 旅程结束",
+        ),
+        priority=1,
+        anchor_fn=_has_journey_end_signature, anchor_confidence=1.0,
     ),
     # 评鉴战结算页: 点「确认」接受结果继续(落败不重打 — 重新挑战费票且
     # 等级差摆在那)。priority=1 抢在训练大厅等误判之前。
