@@ -137,6 +137,37 @@ def _append_training_log(round_no: int | None, reason: str, choices) -> None:
         logger.debug("training_log.csv 写入失败", exc_info=True)
 
 
+def _build_profile_from_roster(character: str | None) -> str | None:
+    """从角色名册(config/characters.json)查该角色的培养方向。
+
+    走线由角色定(2026-06-12 用户拍板: 艾芬黛尔=力量, 不能从卡组名猜)。
+    名册 name 是 OCR 清洗名, 与用户输入可能差一字(黛/德), 用模糊匹配兜底。
+    """
+    if not character:
+        return None
+    try:
+        import difflib
+        import json
+
+        data = json.loads(Path("config/characters.json").read_text(encoding="utf-8"))
+        best_profile, best_ratio = None, 0.0
+        for entry in data.get("characters", []):
+            name = str(entry.get("name", ""))
+            profile = str(entry.get("profile", "")) or None
+            if not name or not profile:
+                continue
+            if name == character or name in character or character in name:
+                return profile
+            ratio = difflib.SequenceMatcher(None, name, character).ratio()
+            if ratio > best_ratio:
+                best_ratio, best_profile = ratio, profile
+        if best_ratio >= 0.7:
+            return best_profile
+    except Exception:
+        logger.debug("roster lookup failed", exc_info=True)
+    return None
+
+
 def _last_input_tick() -> int:
     """Windows 全局最后一次键鼠输入的 tick(GetLastInputInfo)。"""
     import ctypes
@@ -298,8 +329,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--build-profile",
-        default="balanced",
-        help="Build profile: balanced, power_focus, focus_focus, durability_focus, stamina_tank, protection_focus.",
+        default=None,
+        help="Build profile: balanced, power_focus, focus_focus, durability_focus, stamina_tank, protection_focus. "
+        "不传时按 --character 查角色名册(config/characters.json)自动定走线; 名册没有则 balanced。",
     )
     parser.add_argument("--difficulty", default="default", help="Journey difficulty selection for pre-journey setup.")
     parser.add_argument("--profession", default="", help="Character profession filter for pre-journey setup.")
@@ -374,6 +406,14 @@ def main() -> None:
     if args.list_windows:
         _print_windows()
         return
+
+    # 走线由角色定: --build-profile 未显式传时按角色名册自动带出
+    # (2026-06-12 用户拍板; 此前从卡组名猜成体力导致整局策略错向)。
+    if args.build_profile is None:
+        roster_profile = _build_profile_from_roster(args.character)
+        args.build_profile = roster_profile or "balanced"
+        print(f"build_profile 自动走线: {args.build_profile}"
+              f"{'(名册)' if roster_profile else '(名册未收录, 回退balanced)'}")
 
     # Find window first
     window = _find_or_exit(args.window_title)
@@ -837,6 +877,30 @@ def main() -> None:
                 # bot 自己的键鼠动作不算"用户活动": 动完立刻记下输入 tick 基线。
                 bot_last_input_tick = _last_input_tick()
             timer.frame_done()
+
+            # 剧情快进 burst(2026-06-12 用户观察: 剧情大量空白时间, 盲点 skip
+            # 提速数倍): 已确认 DIALOGUE 且点了 skip → 不再每帧整套 OCR, 直接
+            # 高频连点同一目标(~7Hz), 每 3 下抓缩略帧, 画面结构剧变(>8%, 进入
+            # 选项/新画面/误开菜单)立即退出回正常识别。
+            if (
+                observation.screen == Screen.DIALOGUE
+                and args.execute
+                and action.kind == "click"
+                and result.executed
+            ):
+                for burst_i in range(14):
+                    time.sleep(0.12)
+                    executor.execute(screen_action)
+                    if burst_i % 3 == 2:
+                        try:
+                            quick_shot, _ = capture_window(args.window_title)
+                        except Exception:
+                            continue
+                        qsig = _frame_signature(quick_shot)
+                        diff = sum(1 for a, b in zip(qsig, frame_sig) if abs(a - b) > 10) / len(qsig)
+                        if diff > 0.08:
+                            break
+                continue
 
             # Advance screens (reward / dialogue / post-training) re-capture fast so
             # we don't crawl one click per --interval through them.
