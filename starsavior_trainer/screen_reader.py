@@ -1156,7 +1156,11 @@ def parse_training_select(
 
         ring = "none"
         if image is not None:
-            ring_rect = profile.regions.get("training_select_ring_detect")
+            # 逐卡彩圈区域优先(training_select_ring_{attr}, 实机帧标定后精确);
+            # 未配置回退整块面板检测(旧行为: 5 卡同值, 只能反映"有彩圈出现")。
+            ring_rect = profile.regions.get(f"training_select_ring_{attr}") or profile.regions.get(
+                "training_select_ring_detect"
+            )
             if ring_rect is not None:
                 ring_signal = RingColorDetector().detect(crop_region(image, ring_rect))
                 ring = ring_signal.name

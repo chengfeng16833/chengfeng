@@ -532,74 +532,89 @@ class TrainerPolicy:
         # screen.
         return Action("click", dialogue.skip_button, f"dialogue {dialogue.variant}, click skip", repeat=3)
 
-    # 前期(≤12回合)候选训练表(2026-06-12 用户拍板, 主属性在前):
-    #   力量系 = 力量 > 韧性; 体力系 = 体力 > 韧性; 其余 build 取 主属性+韧性。
-    EARLY_CANDIDATES_BY_PROFILE: dict[str, tuple[str, str]] = {
-        "power_focus": ("power", "guts"),
-        "stamina_tank": ("stamina", "guts"),
-        "durability_focus": ("stamina", "guts"),
+    # 前期主属性表(2026-06-12 用户拍板): 力量系主=力量, 体力系主=体力;
+    # 其余 build 从 blessing_attribute_by_profile 推主属性。韧性恒为第二顺位。
+    EARLY_PRIMARY_BY_PROFILE: dict[str, str] = {
+        "power_focus": "power",
+        "stamina_tank": "stamina",
+        "durability_focus": "stamina",
     }
-    # 量化权重: 人头主导(差1个人头=50分 必定翻转底分差10), 底分只破平手,
-    # 彩环沿用 ring_bonus(rainbow40/gold25/blue10, 只在候选内加分)。
+    # 量化分层(2026-06-12 二次拍板: 训练为主, 支援卡不得压过训练):
+    #   主属性彩圈 +10000 > 韧性彩圈 +5000 > 人头≥4(刷好感) +人头x50(200~400)
+    #   > 主属性底分 +10 / 韧性底分 +5(普通训练保底, 回合不空过)。
+    # 层级间分数永不交叉: 彩圈必压人头, 人头(≥4才计)必压底分。
+    EARLY_RING_PRIMARY = 10000
+    EARLY_RING_GUTS = 5000
     EARLY_ICON_WEIGHT = 50
+    EARLY_ICON_MIN = 4  # 人头>3 才值得为好感跑别的属性(用户原话: 超过3个)
     EARLY_PRIMARY_BASE = 10
+    EARLY_GUTS_BASE = 5
 
-    def _early_candidates(self, build_profile: str) -> tuple[str, str]:
-        explicit = self.EARLY_CANDIDATES_BY_PROFILE.get(build_profile)
+    def _early_primary(self, build_profile: str) -> str:
+        explicit = self.EARLY_PRIMARY_BY_PROFILE.get(build_profile)
         if explicit is not None:
             return explicit
         primary = self.config.blessing_attribute_by_profile.get(build_profile, "power")
-        return (primary, "guts") if primary != "guts" else ("guts", "stamina")
+        return primary if primary != "guts" else "power"
 
-    def early_training_score(self, choice: TrainingChoice, candidates: tuple[str, str]) -> int:
-        """前期训练量化分(可解释): 底分 + 人头×50 + 彩环。"""
-        base = self.EARLY_PRIMARY_BASE if choice.attr == candidates[0] else 0
-        return (
-            base
-            + choice.icon_count * self.EARLY_ICON_WEIGHT
-            + self.config.ring_bonus.get(choice.ring, 0)
-        )
+    def early_training_score(self, choice: TrainingChoice, primary: str) -> int:
+        """前期训练量化分(分层可解释), 见 EARLY_* 常量注释。
+
+        彩圈=ring 非 none(注: ring 检测目前整块面板 5 卡同值, 逐卡区域
+        training_select_ring_{attr} 标定后才精确 — 见 parse_training_select)。
+        """
+        score = 0
+        has_ring = choice.ring != "none"
+        if has_ring and choice.attr == primary:
+            score += self.EARLY_RING_PRIMARY
+        elif has_ring and choice.attr == "guts":
+            score += self.EARLY_RING_GUTS
+        if choice.icon_count >= self.EARLY_ICON_MIN:
+            score += choice.icon_count * self.EARLY_ICON_WEIGHT
+        if choice.attr == primary:
+            score += self.EARLY_PRIMARY_BASE
+        elif choice.attr == "guts":
+            score += self.EARLY_GUTS_BASE
+        return score
 
     def decide_training_early_icons(
         self, choices: Iterable[TrainingChoice], state: GameState
     ) -> Action | None:
-        """前期(≤12回合)人头优先策略: 候选属性内按量化分选最高。
+        """前期(≤12回合)训练策略: 主属性彩圈 > 韧性彩圈 > 大人头刷好感 > 主属性保底。
 
-        目标是把支援卡好感喂满(用户实战经验: 好感不满训练收益上不去, 之前
-        纯数值优先导致力量角色去练体力)。人头卡面可见, 不需要逐卡检视(提速)。
-        两步: 目标卡未选中 → 点卡; 选中后看失败率, 超阈值换下一候选;
-        候选全不可用 / 人头全 0(区域未校准) → 返回 None 交回检视器老逻辑。
+        训练是主业(支援卡好感只在前期压力小时顺路跑满, 后期靠它提升出彩率)。
+        两步: 目标卡未选中 → 点卡; 选中后看失败率, 超阈值换次高分;
+        全部被失败率排除 → 返回 None 交回老逻辑(会去休息)。
         """
-        candidates_attrs = self._early_candidates(state.build_profile)
-        pool = [c for c in choices if c.attr in candidates_attrs]
-        if not pool or all(c.icon_count <= 0 for c in pool):
-            return None  # 人头检测不可用(几何未校准)→ 老逻辑兜底
+        primary = self._early_primary(state.build_profile)
+        pool = list(choices)
         available = [c for c in pool if c.attr not in self._early_icon_rejected]
         if not available:
-            return None  # 候选全被失败率排除 → 老逻辑(会去休息/换训练)
+            return None  # 全被失败率排除 → 老逻辑(休息/换训练)
+        tiebreak = {primary: 0, "guts": 1}
         scored = sorted(
             available,
-            key=lambda c: (-self.early_training_score(c, candidates_attrs), candidates_attrs.index(c.attr)),
+            key=lambda c: (-self.early_training_score(c, primary), tiebreak.get(c.attr, 2)),
         )
         best = scored[0]
         breakdown = " vs ".join(
-            f"{c.attr}={self.early_training_score(c, candidates_attrs)}(icons{c.icon_count}/{c.ring})"
-            for c in scored
+            f"{c.attr}={self.early_training_score(c, primary)}(icons{c.icon_count}/{c.ring})"
+            for c in scored[:3]
         )
         if not best.selected:
-            return Action("click", best.target, f"early icons: select {best.attr} [{breakdown}]")
+            return Action("click", best.target, f"early: select {best.attr} [{breakdown}]")
         if best.fail_rate is not None and best.fail_rate >= self.config.max_training_fail_rate:
             self._early_icon_rejected.add(best.attr)
             return Action(
                 "pause", None,
-                f"early icons: {best.attr} fail={best.fail_rate}% too risky, trying next",
+                f"early: {best.attr} fail={best.fail_rate}% too risky, trying next",
             )
         if best.confirm_button is None:
             return None
         self._early_icon_rejected.clear()
         return Action(
             "click", best.confirm_button,
-            f"confirm training {best.attr}: early score [{breakdown}] fail={best.fail_rate}%",
+            f"confirm training {best.attr}: early [{breakdown}] fail={best.fail_rate}%",
         )
 
     def decide_training(self, choices: Iterable[TrainingChoice], state: GameState | None = None) -> Action:
