@@ -137,35 +137,39 @@ def _append_training_log(round_no: int | None, reason: str, choices) -> None:
         logger.debug("training_log.csv 写入失败", exc_info=True)
 
 
-def _build_profile_from_roster(character: str | None) -> str | None:
-    """从角色名册(config/characters.json)查该角色的培养方向。
+def _roster_lookup(character: str | None) -> tuple[str | None, str | None]:
+    """从角色名册(config/characters.json)查 (培养方向, 形态)。
 
     走线由角色定(2026-06-12 用户拍板: 艾芬黛尔=力量, 不能从卡组名猜)。
     名册 name 是 OCR 清洗名, 与用户输入可能差一字(黛/德), 用模糊匹配兜底。
+    形态(variant)也一并带出 — 异色角色(如 艾芬黛尔 ANOTHER)同名多形态时
+    必须靠它选对那张卡。
     """
     if not character:
-        return None
+        return None, None
     try:
         import difflib
         import json
 
         data = json.loads(Path("config/characters.json").read_text(encoding="utf-8"))
-        best_profile, best_ratio = None, 0.0
+        best: tuple[str | None, str | None] = (None, None)
+        best_ratio = 0.0
         for entry in data.get("characters", []):
             name = str(entry.get("name", ""))
             profile = str(entry.get("profile", "")) or None
+            variant = str(entry.get("variant", "")) or None
             if not name or not profile:
                 continue
             if name == character or name in character or character in name:
-                return profile
+                return profile, variant
             ratio = difflib.SequenceMatcher(None, name, character).ratio()
             if ratio > best_ratio:
-                best_ratio, best_profile = ratio, profile
+                best_ratio, best = ratio, (profile, variant)
         if best_ratio >= 0.7:
-            return best_profile
+            return best
     except Exception:
         logger.debug("roster lookup failed", exc_info=True)
-    return None
+    return None, None
 
 
 def _last_input_tick() -> int:
@@ -409,11 +413,15 @@ def main() -> None:
 
     # 走线由角色定: --build-profile 未显式传时按角色名册自动带出
     # (2026-06-12 用户拍板; 此前从卡组名猜成体力导致整局策略错向)。
+    # 形态(ANOTHER/COSMIC)同时带出, 异色角色选角必须靠它。
+    roster_profile, roster_variant = _roster_lookup(args.character)
     if args.build_profile is None:
-        roster_profile = _build_profile_from_roster(args.character)
         args.build_profile = roster_profile or "balanced"
         print(f"build_profile 自动走线: {args.build_profile}"
               f"{'(名册)' if roster_profile else '(名册未收录, 回退balanced)'}")
+    if not args.variant and roster_variant:
+        args.variant = roster_variant
+        print(f"variant 自动带出: {roster_variant}(名册)")
 
     # Find window first
     window = _find_or_exit(args.window_title)

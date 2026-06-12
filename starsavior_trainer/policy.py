@@ -1047,7 +1047,15 @@ def _character_name_matches(option_name: str | None, desired: str) -> bool:
     if a == b:
         return True
     shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
-    return len(shorter) >= 2 and shorter in longer
+    if len(shorter) >= 2 and shorter in longer:
+        return True
+    # 模糊兜底(2026-06-12): OCR 名与用户写法常差一字(艾芬黛尔/艾芬德尔),
+    # 长度 ≥3 才启用防短名误配; 0.75 = 四字名容一字差。
+    if len(a) >= 3 and len(b) >= 3:
+        import difflib
+
+        return difflib.SequenceMatcher(None, a, b).ratio() >= 0.75
+    return False
 
 
 def _character_list_scroll_target(selection: CharacterSelect) -> Rect | None:
