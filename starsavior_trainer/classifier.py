@@ -3,6 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from PIL import Image
+from starsavior_trainer.fingerprint import (
+    ScreenFingerprint,
+    get_default_fingerprints,
+    match_fingerprint,
+)
 from starsavior_trainer.image_regions import crop_region
 from starsavior_trainer.logging_setup import get_logger
 from starsavior_trainer.models import Observation, Screen
@@ -295,12 +300,28 @@ def classify_hybrid(
     ocr: OcrEngine,
     blue_min_confidence: float = 0.60,
     ocr_min_confidence: float = 0.70,
+    fingerprints: dict[Screen, ScreenFingerprint] | None = None,
 ) -> Observation:
     """Classify screen with OCR first, fallback to blue-button detection.
 
     OCR anchors are slower but safer when multiple screens share blue button
     positions. Blue detection remains a fallback for OCR-poor screens.
+
+    fingerprints: None = 用默认指纹库(config/fingerprints/), 传 {} 显式停用
+    (看门狗复核用 — 复核必须换一双眼睛重看, 不能被指纹秒答)。
     """
+    # 像素指纹快路径(取色宏思路, 提速4): 离线挖掘 + 全库 0 误判验证的取色点,
+    # 亚毫秒认画面, 命中即免整套 OCR 锚金字塔。拿不准时返回 None 走下方老路。
+    if fingerprints is None:
+        fingerprints = get_default_fingerprints()
+    fp_screen = match_fingerprint(image, fingerprints)
+    if fp_screen is not None:
+        if fp_screen == Screen.EVENT_CHOICE and not _has_real_event_options(image, profile, ocr):
+            # 指纹层面 dialogue 与 event_choice 同脸(挖掘时 dialogue 已被判不可分),
+            # 语义区分继续交给选项行 OCR — 与下方 OCR 路径同一套歧义检查。
+            return Observation(screen=Screen.DIALOGUE, confidence=0.95, source="fingerprint")
+        return Observation(screen=fp_screen, confidence=0.97, source="fingerprint")
+
     # Fast path — blue button color detection.
     ocr_result = classify_by_ocr(image, profile, ocr, ocr_min_confidence)
 

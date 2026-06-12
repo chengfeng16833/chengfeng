@@ -195,6 +195,63 @@ def _frames_similar(a: bytes | None, b: bytes | None) -> bool:
         return False
     diff = sum(1 for x, y in zip(a, b) if abs(x - y) > 10)
     return diff <= len(a) * 0.01  # ≤1% 缩略像素变化视为同帧(动效画面自然超限)
+
+
+def _point_color(image: Image.Image, window: WindowInfo, screen_point: tuple[int, int]) -> tuple[int, int, int] | None:
+    """屏幕绝对坐标 → 客户区取色。出界/异常返回 None(调用方放行, 由哈希判据兜底)。"""
+    x = screen_point[0] - window.rect.x
+    y = screen_point[1] - window.rect.y
+    if 0 <= x < image.width and 0 <= y < image.height:
+        try:
+            pixel = image.getpixel((x, y))
+            return (pixel[0], pixel[1], pixel[2])
+        except Exception:
+            return None
+    return None
+
+
+def _colors_close(a: tuple[int, int, int] | None, b: tuple[int, int, int] | None, tol: int = 30) -> bool:
+    if a is None or b is None:
+        return True
+    return abs(a[0] - b[0]) <= tol and abs(a[1] - b[1]) <= tol and abs(a[2] - b[2]) <= tol
+
+
+# 指纹样本自动归档: 指纹弃权而 OCR 认出的帧存进截图库, 给下轮指纹挖掘攒料
+# (training_hub 这类高频画面库里样本极少, 是当前指纹弃权的主因)。
+# 每画面限额, 写满即零成本; 低置信标签不收(OCR 误判会污染指纹库 — 挖掘工具的
+# 全库自检是最后一道闸, 误判帧混入会让它拒绝写盘而不是悄悄学错)。
+_FP_SAMPLE_CAP = 5
+_fp_sample_counts: dict[str, int] = {}
+
+
+def _archive_fingerprint_sample(
+    screenshot: Image.Image, observation: Observation, frame_unchanged: bool
+) -> None:
+    if observation.source == "fingerprint" or observation.screen == Screen.UNKNOWN:
+        return
+    if observation.confidence < 0.85:
+        return
+    # 只收画面静止的帧(与上帧相同): 转场/叠影帧最容易被 OCR 自信误判,
+    # 而它们帧帧在变, 永远过不了这道闸(实跑教训: 转场帧被误标 relic_choice 归档)。
+    if not frame_unchanged:
+        return
+    screen_name = observation.screen.value
+    count = _fp_sample_counts.get(screen_name)
+    if count is None:
+        count = len(list(Path("screenshots").glob(f"{screen_name}_auto_*.png")))
+        _fp_sample_counts[screen_name] = count
+    if count >= _FP_SAMPLE_CAP:
+        return
+    path = Path(f"screenshots/{screen_name}_auto_{count + 1:03d}.png")
+    try:
+        save_image(screenshot, path)
+    except Exception:
+        logger.debug("指纹样本归档失败: %s", path, exc_info=True)
+        return
+    _fp_sample_counts[screen_name] = count + 1
+    print(f"  (指纹样本归档 {path.name} — 重跑 tools/_mine_fingerprints.py 可吃进)")
+
+
 _ADVANCE_SLEEP = 0.35
 # TRAINING_SELECT: the inspector clicks 力量/体力/韧性 in quick succession on the
 # SAME screen (no transition) — it only needs the preview gain to render, not the
@@ -603,7 +660,9 @@ def main() -> None:
                 if detailed_sticky > 0:
                     detailed_sticky -= 1
                 recheck_ocr = ocr.detailed_engine if isinstance(ocr, HybridOcrEngine) else ocr
-                observation = classify_hybrid(screenshot, profile, recheck_ocr)
+                # fingerprints={}: 复核必须换一双眼睛(纯 Paddle), 指纹若误判,
+                # 复核要能推翻它 — 被指纹秒答复核就白做了。
+                observation = classify_hybrid(screenshot, profile, recheck_ocr, fingerprints={})
                 if triggered and observation.screen != last_screen:
                     detailed_sticky = 8
                     print(f"  (watchdog: corrected {last_screen} -> {observation.screen.value}, sticky 8)")
@@ -623,7 +682,8 @@ def main() -> None:
                 # 慢引擎成本; 认出后续静止帧走帧哈希复用, 0 成本。
                 observation = classify_hybrid(screenshot, profile, classify_ocr)
                 if observation.screen == Screen.UNKNOWN and isinstance(ocr, HybridOcrEngine):
-                    observation = classify_hybrid(screenshot, profile, ocr.detailed_engine)
+                    # 指纹首跑已弃权, 重跑只为换精读引擎 — 跳过指纹省一次空匹配。
+                    observation = classify_hybrid(screenshot, profile, ocr.detailed_engine, fingerprints={})
             elif args.blue_mode:
                 observation = classify_by_blue_button(screenshot, profile)
             elif args.use_paddle:
@@ -636,7 +696,8 @@ def main() -> None:
                 # freeze). Hybrid disambiguates them by visual content.
                 observation = classify_hybrid(screenshot, profile, classify_ocr)
                 if observation.screen == Screen.UNKNOWN and isinstance(ocr, HybridOcrEngine):
-                    observation = classify_hybrid(screenshot, profile, ocr.detailed_engine)
+                    # 指纹首跑已弃权, 重跑只为换精读引擎 — 跳过指纹省一次空匹配。
+                    observation = classify_hybrid(screenshot, profile, ocr.detailed_engine, fingerprints={})
             else:
                 observation = classify_by_ocr(screenshot, profile, ocr)
             timer.record("classify", time.perf_counter() - _t0)
@@ -645,6 +706,7 @@ def main() -> None:
             last_screen_confidence = observation.confidence
 
             logger.info(f"classified screen={observation.screen.value} confidence={observation.confidence:.2f}")
+            _archive_fingerprint_sample(screenshot, observation, frame_unchanged)
             if observation.screen in (Screen.CHARACTER_SELECT, Screen.BLESSING_SETUP):
                 character_score, blessing_score = journey_origin_visual_scores(screenshot, profile)
                 visual_screen = classify_journey_origin_by_visual(screenshot, profile)
@@ -900,26 +962,40 @@ def main() -> None:
 
             # 推进画面快进 burst(2026-06-12 用户观察: 推进类画面点位全固定,
             # 内容随机但点位不随机): 已确认画面类型且点击有效 → 不再每帧整套
-            # OCR, 直接高频盲点同一固定位(~7Hz), 每 3 下抓缩略帧, 画面结构
-            # 剧变(>8%, 出现选项/新画面/误开菜单)立即退出回正常识别。
+            # OCR, 直接高频盲点同一固定位(~7Hz), 每 2 下抓缩略帧盯梢, 异动立即
+            # 退出回正常识别。两个判据(实跑教训: skip 连点误触菜单):
+            #   1) 目标点取色 — burst 前记下点位颜色, 按钮消失/挪位/被菜单面板
+            #      盖住时该点颜色必变, 点位级灵敏, 先于整屏判据止手;
+            #   2) 整屏哈希 >8% — 新画面/选项出现的兜底(原判据保留)。
             if (
                 observation.screen in (Screen.DIALOGUE, Screen.REWARD, Screen.POST_TRAINING, Screen.GOAL_LIST)
                 and args.execute
                 and action.kind == "click"
                 and result.executed
             ):
+                burst_base_color = (
+                    _point_color(screenshot, client_window, result.point)
+                    if result.point is not None
+                    else None
+                )
                 for burst_i in range(14):
                     time.sleep(0.12)
-                    executor.execute(screen_action)
-                    if burst_i % 3 == 2:
-                        try:
-                            quick_shot, _ = capture_window(args.window_title)
-                        except Exception:
-                            continue
+                    # 每轮点击前都验一次(抓帧仅 ~0.04s): 先验后点, 异动这轮就不点。
+                    try:
+                        quick_shot, _ = capture_window(args.window_title)
+                    except Exception:
+                        quick_shot = None
+                    if quick_shot is not None:
+                        if result.point is not None and not _colors_close(
+                            _point_color(quick_shot, client_window, result.point), burst_base_color
+                        ):
+                            print("  burst 止手: 目标点颜色变了(按钮消失/挪位), 回主循环重新认画面")
+                            break
                         qsig = _frame_signature(quick_shot)
                         diff = sum(1 for a, b in zip(qsig, frame_sig) if abs(a - b) > 10) / len(qsig)
                         if diff > 0.08:
                             break
+                    executor.execute(screen_action)
                 continue
 
             # Advance screens (reward / dialogue / post-training) re-capture fast so
