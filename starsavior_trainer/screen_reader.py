@@ -1161,6 +1161,8 @@ def parse_training_select(
                 ring_signal = RingColorDetector().detect(crop_region(image, ring_rect))
                 ring = ring_signal.name
 
+        icon_count = _count_training_icons(image, profile, attr)
+
         choices.append(
             TrainingChoice(
                 name=recognized_name,
@@ -1168,6 +1170,8 @@ def parse_training_select(
                 ring=ring,
                 fail_rate=fail_rate,
                 target=card_rect,
+                attr=attr,
+                icon_count=icon_count,
                 selected=selected,
                 confirm_button=confirm_button,
                 back_button=back_button,
@@ -1177,6 +1181,41 @@ def parse_training_select(
     if not choices:
         return None
     return choices
+
+
+def _count_training_icons(
+    image: Image.Image | None, profile: RegionProfile, attr: str
+) -> int:
+    """数某行训练上的支援卡人头(卡面纵列小头像)。
+
+    区域 training_select_icons_{attr} 框住该行的人头列(实机帧校准后填),
+    在列内自上而下按等距槽位用 support_cards.has_card_icon 判定, 首个空槽停。
+    区域未配置 / 无图像 → 0(前期人头策略自动不触发, 回退检视器)。
+    """
+    if image is None:
+        return 0
+    col_rect = profile.regions.get(f"training_select_icons_{attr}")
+    if col_rect is None:
+        return 0
+    try:
+        from starsavior_trainer.support_cards import has_card_icon
+
+        column = crop_region(image, col_rect)
+        slots = 8
+        slot_h = column.height // slots
+        if slot_h < 4:
+            return 0
+        count = 0
+        for slot in range(slots):
+            patch = column.crop((0, slot * slot_h, column.width, (slot + 1) * slot_h))
+            if has_card_icon(patch):
+                count += 1
+            else:
+                break
+        return count
+    except Exception:
+        logger.debug("training icon count failed for %s", attr, exc_info=True)
+        return 0
 
 
 def _has_training_select_anchor(texts: dict[str, str], profile: RegionProfile) -> bool:

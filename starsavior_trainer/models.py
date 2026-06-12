@@ -96,6 +96,12 @@ class TrainingChoice:
     # 只有当前选中的卡会显示失败率;策略层把 None 当作"不可冒险"(见 training_score)。
     fail_rate: int | None
     target: Rect
+    # internal 属性键(power/stamina/guts/wisdom/speed), 来自卡位循环, 永远可靠
+    # (name 可能被 OCR 中文名覆盖)。
+    attr: str = ""
+    # 该训练上的支援卡人头数(卡面可见, 不用点开)。前期策略: 跟着人头练刷好感
+    # (2026-06-12 用户拍板)。0 = 没有/检测不出。
+    icon_count: int = 0
     # Whether this card is currently highlighted/selected (only the selected card
     # shows its 失败率 on screen). The screen-level confirm (训练) button is carried
     # on each choice so the policy can confirm once the desired card is selected.

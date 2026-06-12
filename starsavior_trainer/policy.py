@@ -292,6 +292,8 @@ class TrainerPolicy:
         self.config = config or PolicyConfig()
         # 赛前流程(主界面→进旅途)的单局进度标记, 防重复点击/死循环。
         self.prejourney_progress = PrejourneyProgress()
+        # 前期人头策略本回合已因失败率排除的属性(回到训练大厅时清空)。
+        self._early_icon_rejected: set[str] = set()
         self._pending_commission: Rect | None = None
         # Two-step relic confirm: remembers the relic card we clicked so the next
         # call clicks 确认 instead of re-evaluating "best" every frame. Without this
@@ -529,6 +531,48 @@ class TrainerPolicy:
         # confirm, without the frantic over-clicking that overshoots into the next
         # screen.
         return Action("click", dialogue.skip_button, f"dialogue {dialogue.variant}, click skip", repeat=3)
+
+    # 力量系角色的属性优先级(2026-06-12 用户拍板): 力量 > 韧性 > 体力 > 专注 > 保护。
+    EARLY_ICON_PREFERRED = ("power", "guts")
+
+    def decide_training_early_icons(
+        self, choices: Iterable[TrainingChoice], state: GameState
+    ) -> Action | None:
+        """前期(≤12回合)人头优先策略: 在 力量/韧性 中选支援卡人头最多的。
+
+        目标是把支援卡好感喂满(用户实战经验: 好感不满训练收益上不去, 之前
+        纯数值优先导致力量角色去练体力)。人头卡面可见, 不需要逐卡检视(提速)。
+        两步: 目标卡未选中 → 点卡; 选中后看失败率, 超阈值换下一候选;
+        候选全不可用 / 人头全 0(区域未校准) → 返回 None 交回检视器老逻辑。
+        """
+        pool = [c for c in choices if c.attr in self.EARLY_ICON_PREFERRED]
+        if not pool or all(c.icon_count <= 0 for c in pool):
+            return None  # 人头检测不可用(几何未校准)→ 老逻辑兜底
+        rejected = self._early_icon_rejected
+        candidates = [c for c in pool if c.attr not in rejected]
+        if not candidates:
+            return None  # 力量/韧性都被失败率排除 → 老逻辑(会去休息/换训练)
+        # 人头多者胜; 平手按 力量 > 韧性(EARLY_ICON_PREFERRED 顺序)。
+        candidates.sort(key=lambda c: (-c.icon_count, self.EARLY_ICON_PREFERRED.index(c.attr)))
+        best = candidates[0]
+        if not best.selected:
+            return Action(
+                "click", best.target,
+                f"early icons: select {best.attr} (icons={best.icon_count})",
+            )
+        if best.fail_rate is not None and best.fail_rate >= self.config.max_training_fail_rate:
+            self._early_icon_rejected.add(best.attr)
+            return Action(
+                "pause", None,
+                f"early icons: {best.attr} fail={best.fail_rate}% too risky, trying next",
+            )
+        if best.confirm_button is None:
+            return None
+        self._early_icon_rejected.clear()
+        return Action(
+            "click", best.confirm_button,
+            f"confirm training {best.attr}: early icons={best.icon_count} fail={best.fail_rate}%",
+        )
 
     def decide_training(self, choices: Iterable[TrainingChoice], state: GameState | None = None) -> Action:
         choices_tuple = tuple(choices)

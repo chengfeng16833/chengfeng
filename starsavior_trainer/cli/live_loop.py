@@ -604,11 +604,22 @@ def main() -> None:
             # each to reveal its +N gain) and pick whichever gives the most — a
             # fixed bias can't know this turn's best. Mirrors the blessing inspector.
             if observation.screen == Screen.TRAINING_SELECT and _is_iterable_of(observation.payload, TrainingChoice):
-                action = training_inspector.decide(observation.payload, state)
-                if action is not None:
-                    print(f"  training_inspector_records={training_inspector.records} pending={training_inspector.pending}")
+                # 校准素材: 最近一帧训练选择画面(人头列几何标定用)。
+                save_image(screenshot, Path("screenshots/live_training_select_latest.png"))
+                # 前期(≤12回合)人头优先(2026-06-12 用户策略): 力量/韧性里跟着
+                # 支援卡人头练刷好感, 不逐卡检视。不可用(返回None)回退检视器。
+                if round_tracker.current_round is not None and round_tracker.current_round <= 12:
+                    action = policy.decide_training_early_icons(observation.payload, state)
+                    if action is not None:
+                        icons = {c.attr: c.icon_count for c in observation.payload}
+                        print(f"  early_icons={icons} round={round_tracker.current_round}")
+                if action is None:
+                    action = training_inspector.decide(observation.payload, state)
+                    if action is not None:
+                        print(f"  training_inspector_records={training_inspector.records} pending={training_inspector.pending}")
             elif observation.screen != Screen.TRAINING_SELECT:
                 training_inspector.reset()
+                policy._early_icon_rejected.clear()
             # Journey Trading: item effects only show when an item is selected, so
             # the inspector clicks each row to read its effect, then buys by effect
             # (回体力/潜质点退还) — mirrors the training inspector.
