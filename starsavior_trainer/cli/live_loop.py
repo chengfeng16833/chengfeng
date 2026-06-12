@@ -499,6 +499,8 @@ def main() -> None:
             # 省掉整屏 OCR(提速3); 否则照常分类。
             _t0 = time.perf_counter()
             frame_sig = _frame_signature(screenshot)
+            # 供 click 无效看门狗用: 本帧与上帧是否几乎相同(点击没把画面点动)。
+            frame_unchanged = _frames_similar(frame_sig, last_frame_sig)
             if (force_detailed_classify or detailed_sticky > 0) and (args.hybrid_mode or args.use_paddle):
                 # 看门狗触发/粘性期: 用 Paddle(准确)复核, 纠正快引擎的自信误判;
                 # 必须先于帧哈希复用(否则错误分类被零成本延续)。纠正真的发生时
@@ -514,7 +516,7 @@ def main() -> None:
                 elif triggered:
                     print(f"  (watchdog: detailed re-classify confirmed {observation.screen.value})")
             elif (
-                _frames_similar(frame_sig, last_frame_sig)
+                frame_unchanged
                 and last_screen is not None
                 and last_screen != Screen.UNKNOWN
             ):
@@ -729,16 +731,18 @@ def main() -> None:
                     f"dialogue advance (menu-safe bottom, pingpong#{menu_pingpong_count})", repeat=2,
                 )
             prev_screen = observation.screen
-            # 误判看门狗: 连续同因 pause ≥4 / scroll ≥2 → 下一帧强制 Paddle 复核。
-            # scroll 阈值更低: 误判画面上的拖拽有真实副作用(实跑教训: 在支援卡
-            # 画面上拖, 被游戏当卡组滑动, 把用户配好的卡组滑走 → 旅程起点变灰)。
-            if action.kind in ("pause", "scroll"):
+            # 误判看门狗: 连续同因 pause ≥4 / scroll ≥2 / 无效click ≥6 →
+            # 下一帧强制 Paddle 复核。scroll 阈值低(拖拽有真实副作用: 卡组被
+            # 滑走的实跑教训); click 仅在帧哈希不变时计数(画面被点动=正常推进)
+            # —— 兜住"自信误判+点空白死循环"整类卡死(FAIL 结算页实跑教训)。
+            stuck_click = action.kind == "click" and frame_unchanged
+            if action.kind in ("pause", "scroll") or stuck_click:
                 if action.reason == same_pause_reason:
                     same_pause_count += 1
                 else:
                     same_pause_reason = action.reason
                     same_pause_count = 1
-                threshold = 2 if action.kind == "scroll" else 4
+                threshold = 2 if action.kind == "scroll" else (6 if stuck_click else 4)
                 if same_pause_count >= threshold:
                     force_detailed_classify = True
                     same_pause_count = 0
