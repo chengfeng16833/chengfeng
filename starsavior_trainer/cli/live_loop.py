@@ -440,6 +440,12 @@ def main() -> None:
     last_frame_sig: bytes | None = None
     last_screen: Screen | None = None
     last_screen_confidence: float = 0.0
+    # 误判看门狗: 快引擎可能"自信地认错"(实测: WinRT 把支援卡画面认成
+    # character_select 1.00 → 找不到角色 pause 死循环, 帧哈希还会零成本延续
+    # 这个错误)。连续同因 pause ≥4 帧 → 强制下一帧用 Paddle 复核分类。
+    same_pause_reason: str | None = None
+    same_pause_count = 0
+    force_detailed_classify = False
     try:
         while args.max_iterations == 0 or iteration < args.max_iterations:
             # Mouse-corner emergency stop, checked FIRST every iteration. The most
@@ -485,7 +491,13 @@ def main() -> None:
             # 省掉整屏 OCR(提速3); 否则照常分类。
             _t0 = time.perf_counter()
             frame_sig = _frame_signature(screenshot)
-            if (
+            if force_detailed_classify and (args.hybrid_mode or args.use_paddle):
+                # 看门狗触发: 用 Paddle(准确)复核, 纠正快引擎的自信误判;
+                # 必须先于帧哈希复用(否则错误分类被零成本延续)。
+                force_detailed_classify = False
+                observation = classify_hybrid(screenshot, profile, ocr)
+                print(f"  (watchdog: detailed re-classify -> {observation.screen.value})")
+            elif (
                 _frames_similar(frame_sig, last_frame_sig)
                 and last_screen is not None
                 and last_screen != Screen.UNKNOWN
@@ -685,6 +697,19 @@ def main() -> None:
                 consecutive_character_confirms = 0
                 last_character_click_target = None
             timer.record("decide", time.perf_counter() - _t0)
+            # 误判看门狗: 连续同因 pause ≥4 → 下一帧强制 Paddle 复核分类。
+            if action.kind == "pause":
+                if action.reason == same_pause_reason:
+                    same_pause_count += 1
+                else:
+                    same_pause_reason = action.reason
+                    same_pause_count = 1
+                if same_pause_count >= 4:
+                    force_detailed_classify = True
+                    same_pause_count = 0
+            else:
+                same_pause_reason = None
+                same_pause_count = 0
             # 决策日志带回合号: 复盘训练策略时能按回合对齐(用户 2026-06-12 需求)。
             logger.info(
                 f"decision: {action.kind} round={round_tracker.current_round} "
