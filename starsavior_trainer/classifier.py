@@ -600,9 +600,12 @@ def _has_event_choice_signature(anchors: dict[str, str]) -> bool:
     # \u6807\u9898), \u4f8b\u5982\u59d4\u6258\u5931\u8d25\u540e\u7684\u5267\u60c5\u5206\u652f\u3002\u53cc\u951a: \u53f3\u4fa7\u9009\u9879\u884c\u6709\u5b57 AND \u5e95\u90e8\u5bf9\u8bdd\u5b57\u5e55
     # \u6709\u5b57 \u2014\u2014 \u5355\u9760\u9009\u9879\u533a\u4f1a\u628a\u795d\u798f/\u8bad\u7ec3\u7b49\u753b\u9762\u540c\u4f4d\u7f6e\u7684\u6587\u5b57\u8bef\u5224\u8fdb\u6765(\u6d4b\u8bd5\u6293\u8fc7)\u3002
     # \u4e0d\u8bc6\u522b\u5b83\u4f1a\u88ab\u5f53 dialogue \u53cd\u590d\u70b9\u65e0\u6548 skip\u3002
+    # 第三锚: 选项是完整句子, 必带句末标点(都破坏成那样了?/拿出活力药水。),
+    # 把"任意区域恰好有字"的误判(卡名/标题之类)挡在门外。
     side = anchors.get("event_choice_side_1", "")
     subtitle = anchors.get("dialogue_journey_text_area", "")
-    return len(side.strip()) >= 2 and bool(subtitle.strip())
+    has_punct = contains_any_text(side, ("?", "？", "。", "!", "！", "…"))
+    return len(side.strip()) >= 2 and bool(subtitle.strip()) and has_punct
 
 
 def _has_dialogue_signature(anchors: dict[str, str]) -> bool:
