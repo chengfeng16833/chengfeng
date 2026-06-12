@@ -78,6 +78,10 @@ _FAST_ANCHORS: tuple[str, ...] = (
     # 评鉴战结算页(落败/重新挑战; 不识别会被误判训练大厅点空白死循环)。
     "battle_result_text",
     "battle_result_buttons",
+    # 常规日大厅右侧菜单(训练/委托/休息) — 常规大厅签名的双词锚。
+    "training_hub_action_training",
+    "training_hub_action_commission",
+    "training_hub_action_rest",
 )
 
 
@@ -694,10 +698,17 @@ def _has_training_hub_shop_signature(anchors: dict[str, str]) -> bool:
             "training_hub_nav_potential",
         )
     )
-    return contains_any_text(shop_text, ("\u4ea4\u6613", "\u5546\u54c1", "\u5230\u8d27")) and contains_any_text(
+    if contains_any_text(shop_text, ("\u4ea4\u6613", "\u5546\u54c1", "\u5230\u8d27")) and contains_any_text(
         shop_text,
         ("\u6f5c\u8d28", "\u5546\u54c1", "\u5230\u8d27"),
-    )
+    ):
+        return True
+    # \u5e38\u89c4\u65e5\u5927\u5385(2026-06-12 \u5b9e\u8dd1): \u53f3\u4fa7\u83dc\u5355\u662f \u8bad\u7ec3/\u59d4\u6258/\u4f11\u606f(\u6ca1\u6709\u4ea4\u6613) \u2014\u2014
+    # \u8001\u7b7e\u540d\u53ea\u8ba4 D-DAY \u5f62\u6001, \u5e38\u89c4\u5927\u5385\u4e00\u76f4\u9760\u6a21\u7cca\u6253\u5206 0.67 \u64e6\u8fb9, \u65f6\u4e0d\u65f6\u5361\u6b7b\u3002
+    # \u53cc\u8bcd\u7ec4\u5408: \u8bad\u7ec3\u6309\u94ae + (\u59d4\u6258\u6216\u4f11\u606f), \u8bad\u7ec3\u9009\u62e9/\u4e8b\u4ef6\u7b49\u753b\u9762\u6ca1\u6709\u8fd9\u7ec4\u5408\u3002
+    training = anchors.get("training_hub_action_training", "")
+    side = anchors.get("training_hub_action_commission", "") + anchors.get("training_hub_action_rest", "")
+    return "\u8bad\u7ec3" in training and contains_any_text(side, ("\u59d4\u6258", "\u4f11\u606f"))
 
 
 def _has_rest_submenu_signature(anchors: dict[str, str]) -> bool:
