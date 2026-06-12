@@ -63,7 +63,12 @@ from starsavior_trainer.models import (
     TrainingChoice,
     TrainingHubStatus,
 )
-from starsavior_trainer.ocr import NoopOcrEngine, PaddleOcrEngine, create_hybrid_ocr_engine
+from starsavior_trainer.ocr import (
+    HybridOcrEngine,
+    NoopOcrEngine,
+    PaddleOcrEngine,
+    create_hybrid_ocr_engine,
+)
 from starsavior_trainer.policy import TrainerPolicy, _is_iterable_of
 from starsavior_trainer.regions import load_region_profile, scale_region_profile, RegionProfile
 from starsavior_trainer.run_config import PreJourneyConfig
