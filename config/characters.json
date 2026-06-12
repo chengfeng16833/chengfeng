@@ -21,6 +21,7 @@
     { "name": "亚瑟菈", "class": "游侠", "profile": "power_focus" },
     { "name": "艾黛", "class": "坦克", "profile": "stamina_tank" },
     { "name": "艾芬德尔", "class": "游侠", "profile": "power_focus" },
+    { "name": "艾芬黛尔", "class": "游侠", "profile": "power_focus", "variant": "ANOTHER", "_note": "2026-06新异色形态,力量型(用户确认); OCR清洗名待实跑选角验证,先双写法收录" },
     { "name": "艾莉莎", "class": "突击者", "profile": "power_focus" },
     { "name": "卡蜜", "class": "突击者", "profile": "power_focus" },
     { "name": "绮拉", "class": "刺客", "profile": "power_focus" },
