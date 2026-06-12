@@ -446,6 +446,11 @@ def main() -> None:
     same_pause_reason: str | None = None
     same_pause_count = 0
     force_detailed_classify = False
+    # 菜单乒乓防御: dialogue 的右上 skip 位置在部分画面上与菜单按钮重叠 —
+    # 点"skip"弹出菜单→点✕关闭→又点"skip"…(实跑: 60帧 game_menu/dialogue
+    # 交替)。上帧是 GAME_MENU 时, dialogue 改点底部中央安全推进位。
+    prev_screen: Screen | None = None
+    menu_pingpong_count = 0
     # 粘性复核: 看门狗纠正发生后, 连续 N 帧继续用 Paddle 分类(误判画面通常
     # 静止多帧, 只纠正一帧的话下一帧又被快引擎认错 — 实跑教训)。
     detailed_sticky = 0
@@ -708,6 +713,22 @@ def main() -> None:
                 consecutive_character_confirms = 0
                 last_character_click_target = None
             timer.record("decide", time.perf_counter() - _t0)
+            # 菜单乒乓防御(见循环前注释): 刚从误触菜单回来 + dialogue 又要点
+            # 右上(y<200 且 x>2000 = 菜单按钮重叠区) → 改点底部中央推进。
+            if (
+                observation.screen == Screen.DIALOGUE
+                and prev_screen == Screen.GAME_MENU
+                and action.kind == "click"
+                and action.target is not None
+                and action.target.y < 200
+                and action.target.x > 2000
+            ):
+                menu_pingpong_count += 1
+                action = Action(
+                    "click", policy.config.reward_continue_button,
+                    f"dialogue advance (menu-safe bottom, pingpong#{menu_pingpong_count})", repeat=2,
+                )
+            prev_screen = observation.screen
             # 误判看门狗: 连续同因 pause ≥4 / scroll ≥2 → 下一帧强制 Paddle 复核。
             # scroll 阈值更低: 误判画面上的拖拽有真实副作用(实跑教训: 在支援卡
             # 画面上拖, 被游戏当卡组滑动, 把用户配好的卡组滑走 → 旅程起点变灰)。
