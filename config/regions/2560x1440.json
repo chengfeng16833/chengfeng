@@ -438,6 +438,9 @@
     "support_card_detail_anchor": [1310, 470, 240, 160],
     "support_card_detail_select": [2210, 990, 250, 95],
 
-    "goal_list_subtitle": [1130, 565, 340, 70]
+    "goal_list_subtitle": [1130, 565, 340, 70],
+
+    "skip_battle_confirm_text": [880, 630, 750, 145],
+    "skip_battle_confirm_button": [1290, 900, 340, 80]
   }
 }

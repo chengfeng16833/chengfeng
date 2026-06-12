@@ -48,6 +48,10 @@ class Screen(str, Enum):
     # 点击以继续)。评鉴战/远征达成后出现; 黑屏让所有常规锚都读不出字,
     # 不识别它就 unknown 死循环(2026-06-12 实跑卡死点)。
     GOAL_LIST = "goal_list"
+    # 「跳过战斗」二次确认弹窗(确定要跳过评鉴战战斗吗? + 跳过战斗 蓝键)。
+    # 远征评鉴战的这个弹窗布局与基础评鉴战不同, 老 battle 锚读不到, 蓝键
+    # fallback 又把它误判成快转设置 → 解析不出选项 pause 死循环(实跑卡死点2)。
+    SKIP_BATTLE_CONFIRM = "skip_battle_confirm"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or

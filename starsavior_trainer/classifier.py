@@ -63,6 +63,8 @@ _FAST_ANCHORS: tuple[str, ...] = (
     "support_card_detail_anchor",
     # 达成目标列表黑底展示页(不识别会 unknown 死循环)。
     "goal_list_subtitle",
+    # 跳过战斗二次确认弹窗(不识别会被蓝键误判成快转设置 → pause 死循环)。
+    "skip_battle_confirm_text",
 )
 
 
@@ -384,6 +386,7 @@ ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
     Screen.SUPPORT_FRIEND_LIST: ["support_friend_list_anchor"],
     Screen.SUPPORT_CARD_DETAIL: ["support_card_detail_anchor"],
     Screen.GOAL_LIST: ["goal_list_subtitle"],
+    Screen.SKIP_BATTLE_CONFIRM: ["skip_battle_confirm_text"],
     Screen.INITIAL: ["route_select_anchor_title", "route_select_route_title", "start_button"],
     Screen.CHARACTER_SELECT: ["character_select_anchor_title"],
     Screen.BLESSING_SETUP: ["blessing_setup_anchor_title"],
@@ -735,6 +738,16 @@ def _has_filter_dialog_signature(anchors: dict[str, str]) -> bool:
     if "筛选" not in title:
         return False
     return any(word in row for word in ("坦克", "突击者", "游侠", "术师", "刺客", "辅助"))
+
+
+def _has_skip_battle_confirm_signature(anchors: dict[str, str]) -> bool:
+    # 「跳过战斗」二次确认弹窗: 中部问句(确定要跳过评鉴战战斗吗/跳过故事时…)。
+    # 必须含「跳过」+(评鉴战/鉴战/战斗吗/故事)组合, 先于蓝键 fallback 命中,
+    # 否则弹窗内的跳过战斗蓝键会压在快转设置确认键区域上被误判(实跑教训)。
+    text = anchors.get("skip_battle_confirm_text", "")
+    if "跳过" not in text:
+        return False
+    return any(word in text for word in ("评鉴战", "鉴战", "战斗吗", "故事"))
 
 
 def _has_goal_list_signature(anchors: dict[str, str]) -> bool:

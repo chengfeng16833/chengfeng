@@ -352,11 +352,16 @@ class HybridOcrEngine:
         *,
         fast_min_confidence: float = 0.5,
         fast_max_area: int | None = DEFAULT_FAST_MAX_AREA,
+        fallback_on_empty: bool = True,
     ):
         self.fast_engine = fast_engine
         self.detailed_engine = detailed_engine
         self.fast_min_confidence = fast_min_confidence
         self.fast_max_area = fast_max_area
+        # False = 「信空」: fast 正常执行但没读到字时直接返回空, 不回退 detailed。
+        # 分类锚场景大多数区域本来就没字, 逐个回退 Paddle 确认空是纯浪费
+        # (实测 timing: classify 占帧 68%/2.57s 的元凶)。精读 payload 用 True。
+        self.fallback_on_empty = fallback_on_empty
 
     # -- internal: never let one engine's exception escape the hybrid --
 
@@ -393,6 +398,10 @@ class HybridOcrEngine:
 
         fast = self._safe_read_text(self.fast_engine, image)
         if fast is not None and fast.text and fast.confidence >= self.fast_min_confidence:
+            return fast
+        if fast is not None and not fast.text and not self.fallback_on_empty:
+            # 信空模式: fast 正常跑完且确实没字 → 这就是答案(空锚区域常态)。
+            # 注意只信「空」; 低置信的非空文本仍走下面的精读回退(质量兜底)。
             return fast
         # Fast path empty, low-confidence, or errored → accuracy-first retry.
         detailed = self._safe_read_text(self.detailed_engine, image)

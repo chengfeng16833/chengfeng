@@ -113,6 +113,25 @@ _ADVANCE_SCREENS = frozenset({Screen.DIALOGUE, Screen.POST_TRAINING, Screen.REWA
 # ---------------------------------------------------------------------------
 
 
+def _append_training_log(round_no: int | None, reason: str, choices) -> None:
+    """训练决策明细落盘(logs/training_log.csv, utf-8-sig 方便 Excel 直接开)。"""
+    try:
+        path = Path("logs/training_log.csv")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        is_new = not path.exists()
+        with path.open("a", encoding="utf-8-sig", newline="") as f:
+            if is_new:
+                f.write("时间,回合,决策,卡片明细(名称:加成:失败率:彩环)\n")
+            detail = " | ".join(
+                f"{c.name}:+{c.stat_gain}:fail={c.fail_rate if c.fail_rate is not None else '?'}:{c.ring}"
+                for c in choices
+            )
+            stamp = time.strftime("%H:%M:%S")
+            f.write(f'{stamp},{round_no if round_no is not None else "?"},"{reason}","{detail}"\n')
+    except Exception:
+        logger.debug("training_log.csv 写入失败", exc_info=True)
+
+
 def _frame_signature(image: Image.Image) -> bytes:
     return image.convert("L").resize((32, 18)).tobytes()
 
@@ -354,12 +373,31 @@ def main() -> None:
     else:
         executor = PyAutoGuiExecutor()
     ocr = _create_ocr(args.use_paddle, args.ocr_engine)
+    # 分类专用引擎: hybrid 时复用同一对底层引擎但「信空」(空锚不回退 Paddle)。
+    # timing 实测分类占帧 68% 的元凶就是空锚逐个回退; payload 精读仍用标准 ocr。
+    classify_ocr = ocr
+    if isinstance(ocr, HybridOcrEngine):
+        classify_ocr = HybridOcrEngine(
+            ocr.fast_engine, ocr.detailed_engine,
+            fast_min_confidence=ocr.fast_min_confidence,
+            fast_max_area=ocr.fast_max_area,
+            fallback_on_empty=False,
+        )
     blue_detector = BlueButtonDetector() if (args.blue_mode or args.hybrid_mode) else None
 
     if args.hybrid_mode:
         mode_label = "hybrid"
         args.use_paddle = True  # Hybrid mode needs real OCR
-        ocr = _create_ocr(True, args.ocr_engine)
+        if not isinstance(ocr, HybridOcrEngine):
+            ocr = _create_ocr(True, args.ocr_engine)
+            classify_ocr = ocr
+            if isinstance(ocr, HybridOcrEngine):
+                classify_ocr = HybridOcrEngine(
+                    ocr.fast_engine, ocr.detailed_engine,
+                    fast_min_confidence=ocr.fast_min_confidence,
+                    fast_max_area=ocr.fast_max_area,
+                    fallback_on_empty=False,
+                )
     elif args.blue_mode:
         mode_label = "blue-button"
     elif args.use_paddle:
@@ -620,7 +658,20 @@ def main() -> None:
                 consecutive_character_confirms = 0
                 last_character_click_target = None
             timer.record("decide", time.perf_counter() - _t0)
-            logger.info(f"decision: {action.kind} target={action.target} reason={action.reason}")
+            # 决策日志带回合号: 复盘训练策略时能按回合对齐(用户 2026-06-12 需求)。
+            logger.info(
+                f"decision: {action.kind} round={round_tracker.current_round} "
+                f"target={action.target} reason={action.reason}"
+            )
+            # 训练回合明细 CSV(logs/training_log.csv, Excel 可直接开): 每次最终
+            # 确认训练时落一行 = 回合号 + 选择理由 + 五张卡的 加成/失败率/彩环。
+            if (
+                observation.screen == Screen.TRAINING_SELECT
+                and action.kind == "click"
+                and "confirm training" in (action.reason or "")
+                and _is_iterable_of(observation.payload, TrainingChoice)
+            ):
+                _append_training_log(round_tracker.current_round, action.reason, observation.payload)
             screen_action = map_action_to_rect(action, screenshot.size, client_window.rect)
             if action.target is not None:
                 print(f"  screen_target={screen_action.target}")
