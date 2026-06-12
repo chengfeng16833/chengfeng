@@ -1327,6 +1327,20 @@ def parse_event_choice(
         if option_text.strip():
             options.append(EventOption(text=option_text.strip(), target=target, event_title=event_title))
 
+    # 对话式事件选项变体(右侧选项行, 无常规事件面板; 2026-06-12 实跑发现:
+    # 委托失败后的剧情分支)。带锁的选项 OCR 一般会带 🔒/数字噪声, 仍按文本
+    # 入列, 由事件库/关键词规则去选安全项。
+    if not options:
+        for idx in (1, 2):
+            target = profile.regions.get(f"event_choice_side_{idx}")
+            if target is None:
+                continue
+            side_text = texts.get(f"event_choice_side_{idx}", "")
+            if side_text.strip():
+                options.append(
+                    EventOption(text=side_text.strip(), target=target, event_title=event_title or "side_event")
+                )
+
     if not options:
         return None
     return options
@@ -1338,6 +1352,9 @@ def _has_event_choice_anchor(texts: dict[str, str], profile: RegionProfile) -> b
     if contains_any_text(title, ("\u65c5\u7a0b\u4e8b\u4ef6", "\u4e8b\u4ef6", "event")):
         return True
     if option1.strip() and profile.regions.get("event_choice_option_1") is not None:
+        return True
+    # \u5bf9\u8bdd\u5f0f\u4e8b\u4ef6\u9009\u9879\u53d8\u4f53: \u53f3\u4fa7\u9009\u9879\u884c\u6709\u5b57\u5373\u8ba4(\u4e0e classifier \u7b7e\u540d\u4e00\u81f4)\u3002
+    if len(texts.get("event_choice_side_1", "").strip()) >= 2:
         return True
     return False
 
