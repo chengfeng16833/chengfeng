@@ -697,8 +697,10 @@ def main() -> None:
                 consecutive_character_confirms = 0
                 last_character_click_target = None
             timer.record("decide", time.perf_counter() - _t0)
-            # 误判看门狗: 连续同因 pause ≥4 → 下一帧强制 Paddle 复核分类。
-            if action.kind == "pause":
+            # 误判看门狗: 连续同因 pause/scroll ≥4 → 下一帧强制 Paddle 复核分类。
+            # scroll 也算: 支援卡画面被误判成选角时, bot 是不停滚动找人而非
+            # pause(实跑教训); 真选角画面只是每4次滚动多付一次复核, 无害。
+            if action.kind in ("pause", "scroll"):
                 if action.reason == same_pause_reason:
                     same_pause_count += 1
                 else:
