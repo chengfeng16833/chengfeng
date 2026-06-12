@@ -456,6 +456,7 @@
 
     "journey_end_button": [2055, 745, 260, 70],
     "confirm_dialog_confirm_button_high": [1354, 901, 296, 64],
-    "confirm_dialog_notice_tag": [650, 460, 220, 65]
+    "confirm_dialog_notice_tag": [650, 460, 220, 65],
+    "new_blessing_title": [990, 340, 480, 70]
   }
 }

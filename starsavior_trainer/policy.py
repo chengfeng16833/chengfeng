@@ -280,6 +280,8 @@ class PolicyConfig:
     battle_result_confirm_button: Rect = Rect(1270, 1245, 390, 80)
     # 终局大厅右侧「旅程结束」按钮(实机帧校准)。
     journey_end_button: Rect = Rect(2055, 745, 260, 70)
+    # 终局「获得全新祝福」页底部确认按钮(实机帧校准)。
+    new_blessing_confirm_button: Rect = Rect(1311, 1270, 318, 75)
     # 「选择旅程」画面右下角的三个难度按钮(与 regions JSON 的
     # route_select_difficulty_* 同值)。赛前配置了难度时先点它再点开始。
     difficulty_buttons: dict[str, Rect] = field(

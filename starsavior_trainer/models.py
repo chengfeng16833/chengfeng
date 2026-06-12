@@ -57,6 +57,8 @@ class Screen(str, Enum):
     BATTLE_RESULT = "battle_result"
     # 终局大厅: 右侧只剩「旅程结束」按钮(可习得潜质)。点它进终局结算/学技能。
     JOURNEY_END = "journey_end"
+    # 终局「获得全新祝福」结算页(旅程成果已化为祝福 + 确认)。点确认收下。
+    NEW_BLESSING = "new_blessing"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or

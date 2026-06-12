@@ -29,6 +29,7 @@ from starsavior_trainer.classifier import (
     _has_journey_end_signature,
     _has_main_menu_panel_signature,
     _has_main_screen_signature,
+    _has_new_blessing_signature,
     _has_region_move_signature,
     _has_post_training_signature,
     _has_rest_submenu_signature,
@@ -463,6 +464,16 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         priority=1,
         anchor_fn=_has_skip_battle_confirm_signature, anchor_confidence=1.0,
         parse_fn=parse_skip_battle_confirm, ocr_prefixes=["skip_battle_confirm"],
+    ),
+    # 终局「获得全新祝福」页: 点确认收下(被误判 relic_choice 点中心无效 —
+    # 实跑卡点14)。priority=1 抢在 relic 误判之前。
+    Screen.NEW_BLESSING: DelegatingScreenHandler(
+        Screen.NEW_BLESSING,
+        lambda obs, state, policy: Action(
+            "click", policy.config.new_blessing_confirm_button, "new blessing result, click 确认",
+        ),
+        priority=1,
+        anchor_fn=_has_new_blessing_signature, anchor_confidence=1.0,
     ),
     # 终局大厅: 点「旅程结束」进结算/学技能。priority=1 抢在大厅签名之前
     # (终局画面没有训练/委托菜单, 大厅签名不会命中, 但保险起见排前)。
