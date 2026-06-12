@@ -604,15 +604,15 @@ def main() -> None:
             # each to reveal its +N gain) and pick whichever gives the most — a
             # fixed bias can't know this turn's best. Mirrors the blessing inspector.
             if observation.screen == Screen.TRAINING_SELECT and _is_iterable_of(observation.payload, TrainingChoice):
-                # 校准素材: 最近一帧训练选择画面(人头列几何标定用)。
+                # 校准素材: 最近一帧训练选择画面(人头列/逐卡彩圈几何标定用)。
                 save_image(screenshot, Path("screenshots/live_training_select_latest.png"))
-                # 前期(≤12回合)人头优先(2026-06-12 用户策略): 力量/韧性里跟着
-                # 支援卡人头练刷好感, 不逐卡检视。不可用(返回None)回退检视器。
-                if round_tracker.current_round is not None and round_tracker.current_round <= 12:
-                    action = policy.decide_training_early_icons(observation.payload, state)
-                    if action is not None:
-                        icons = {c.attr: c.icon_count for c in observation.payload}
-                        print(f"  early_icons={icons} round={round_tracker.current_round}")
+                # 量化训练策略(2026-06-12 用户策略): ≤12回合跑好感(人头),
+                # >12回合收彩圈分层。卡面信号直接可读, 不逐卡检视(提速)。
+                # 不可用(返回None: 全被失败率排除/解析异常)回退检视器老逻辑。
+                action = policy.decide_training_quantified(observation.payload, state)
+                if action is not None:
+                    icons = {c.attr: f"{c.icon_count}/{c.ring}" for c in observation.payload}
+                    print(f"  training_quantified={icons} round={round_tracker.current_round}")
                 if action is None:
                     action = training_inspector.decide(observation.payload, state)
                     if action is not None:

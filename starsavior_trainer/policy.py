@@ -558,10 +558,23 @@ class TrainerPolicy:
         return primary if primary != "guts" else "power"
 
     def early_training_score(self, choice: TrainingChoice, primary: str) -> int:
-        """前期训练量化分(分层可解释), 见 EARLY_* 常量注释。
+        """前期(≤12回合)量化分: 跑好感为主。
 
-        彩圈=ring 非 none(注: ring 检测目前整块面板 5 卡同值, 逐卡区域
-        training_select_ring_{attr} 标定后才精确 — 见 parse_training_select)。
+        前期属性收益低、彩圈基本不出(好感没满) → 人头就是价值:
+        人头x50(1个也算) + 主属性底分10/韧性5; 非候选属性 0 分(不参与);
+        彩圈万一出现按 ring_bonus(≤40)作平手加分, 不会压过 1 个人头。
+        """
+        if choice.attr != primary and choice.attr != "guts":
+            return 0
+        base = self.EARLY_PRIMARY_BASE if choice.attr == primary else self.EARLY_GUTS_BASE
+        return base + choice.icon_count * self.EARLY_ICON_WEIGHT + self.config.ring_bonus.get(choice.ring, 0)
+
+    def late_training_score(self, choice: TrainingChoice, primary: str) -> int:
+        """后期(>12回合)量化分: 收获彩圈。
+
+        主属性彩圈+10000 > 韧性彩圈+5000 > 人头≥4(好感没跑满的尾巴)x50
+        > 主属性底分10/韧性5。层级永不交叉; 非主非韧的彩圈不享受彩圈层。
+        彩圈=ring 非 none(逐卡区域 training_select_ring_{attr} 标定后才精确)。
         """
         score = 0
         has_ring = choice.ring != "none"
@@ -577,44 +590,47 @@ class TrainerPolicy:
             score += self.EARLY_GUTS_BASE
         return score
 
-    def decide_training_early_icons(
+    def decide_training_quantified(
         self, choices: Iterable[TrainingChoice], state: GameState
     ) -> Action | None:
-        """前期(≤12回合)训练策略: 主属性彩圈 > 韧性彩圈 > 大人头刷好感 > 主属性保底。
+        """量化训练策略(2026-06-12 用户拍板): 按回合分段。
 
-        训练是主业(支援卡好感只在前期压力小时顺路跑满, 后期靠它提升出彩率)。
-        两步: 目标卡未选中 → 点卡; 选中后看失败率, 超阈值换次高分;
-        全部被失败率排除 → 返回 None 交回老逻辑(会去休息)。
+        ≤12回合 = 跑好感(early_training_score); >12回合 = 收彩圈
+        (late_training_score)。两步: 目标卡未选中 → 点卡; 选中后失败率
+        超阈值换次高分; 全被排除 → 返回 None 交回老逻辑(会去休息)。
         """
         primary = self._early_primary(state.build_profile)
-        pool = list(choices)
-        available = [c for c in pool if c.attr not in self._early_icon_rejected]
+        early = state.current_round is None or state.current_round <= 12
+        score_fn = self.early_training_score if early else self.late_training_score
+        phase = "early" if early else "late"
+        available = [c for c in choices if c.attr not in self._early_icon_rejected]
         if not available:
             return None  # 全被失败率排除 → 老逻辑(休息/换训练)
         tiebreak = {primary: 0, "guts": 1}
         scored = sorted(
             available,
-            key=lambda c: (-self.early_training_score(c, primary), tiebreak.get(c.attr, 2)),
+            key=lambda c: (-score_fn(c, primary), tiebreak.get(c.attr, 2)),
         )
         best = scored[0]
+        if score_fn(best, primary) <= 0:
+            return None  # 候选全 0 分(异常解析)→ 老逻辑兜底
         breakdown = " vs ".join(
-            f"{c.attr}={self.early_training_score(c, primary)}(icons{c.icon_count}/{c.ring})"
-            for c in scored[:3]
+            f"{c.attr}={score_fn(c, primary)}(icons{c.icon_count}/{c.ring})" for c in scored[:3]
         )
         if not best.selected:
-            return Action("click", best.target, f"early: select {best.attr} [{breakdown}]")
+            return Action("click", best.target, f"{phase}: select {best.attr} [{breakdown}]")
         if best.fail_rate is not None and best.fail_rate >= self.config.max_training_fail_rate:
             self._early_icon_rejected.add(best.attr)
             return Action(
                 "pause", None,
-                f"early: {best.attr} fail={best.fail_rate}% too risky, trying next",
+                f"{phase}: {best.attr} fail={best.fail_rate}% too risky, trying next",
             )
         if best.confirm_button is None:
             return None
         self._early_icon_rejected.clear()
         return Action(
             "click", best.confirm_button,
-            f"confirm training {best.attr}: early [{breakdown}] fail={best.fail_rate}%",
+            f"confirm training {best.attr}: {phase} [{breakdown}] fail={best.fail_rate}%",
         )
 
     def decide_training(self, choices: Iterable[TrainingChoice], state: GameState | None = None) -> Action:
