@@ -853,6 +853,14 @@ def parse_confirm_dialog(
         return None
     title = _or_none(texts.get("confirm_dialog_title")) or "confirm_dialog"
     message = _or_none(texts.get("confirm_dialog_message")) or ""
+    # 「通知」弹窗(结束旅程确认等)按钮排比「入场确认」高一排 —— 按左上
+    # 「通知」标签分流(老 title/message 区域位置只适配入场版, 这弹窗读空;
+    # 实跑: 终局结束确认点了 6 次都落在按钮下缘外)。
+    notice_tag = texts.get("confirm_dialog_notice_tag", "")
+    if "通知" in title or "通知" in notice_tag:
+        high = profile.regions.get("confirm_dialog_confirm_button_high")
+        if high is not None:
+            confirm_button = high
     has_dialog_regions = any(name.startswith("confirm_dialog") for name in texts)
     if title == "confirm_dialog" and not message and not has_dialog_regions:
         return None

@@ -454,6 +454,8 @@
     "battle_result_buttons": [840, 1240, 820, 90],
     "battle_result_confirm_button": [1270, 1245, 390, 80],
 
-    "journey_end_button": [2055, 745, 260, 70]
+    "journey_end_button": [2055, 745, 260, 70],
+    "confirm_dialog_confirm_button_high": [1354, 901, 296, 64],
+    "confirm_dialog_notice_tag": [650, 460, 220, 65]
   }
 }
