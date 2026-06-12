@@ -502,14 +502,16 @@ def main() -> None:
             # 供 click 无效看门狗用: 本帧与上帧是否几乎相同(点击没把画面点动)。
             frame_unchanged = _frames_similar(frame_sig, last_frame_sig)
             if (force_detailed_classify or detailed_sticky > 0) and (args.hybrid_mode or args.use_paddle):
-                # 看门狗触发/粘性期: 用 Paddle(准确)复核, 纠正快引擎的自信误判;
-                # 必须先于帧哈希复用(否则错误分类被零成本延续)。纠正真的发生时
-                # 粘住 8 帧 — 误判画面通常静止多帧, 只纠正一帧下帧又会被认错。
+                # 看门狗触发/粘性期: 用**纯 Paddle**复核(标准 hybrid 的 WinRT 把
+                # 标题读成自信乱码时不回退, 复核等于白做 — 最终结果页实跑教训),
+                # 纠正快引擎的自信误判; 必须先于帧哈希复用。纠正真的发生时粘住
+                # 8 帧 — 误判画面通常静止多帧, 只纠正一帧下帧又会被认错。
                 triggered = force_detailed_classify
                 force_detailed_classify = False
                 if detailed_sticky > 0:
                     detailed_sticky -= 1
-                observation = classify_hybrid(screenshot, profile, ocr)
+                recheck_ocr = ocr.detailed_engine if isinstance(ocr, HybridOcrEngine) else ocr
+                observation = classify_hybrid(screenshot, profile, recheck_ocr)
                 if triggered and observation.screen != last_screen:
                     detailed_sticky = 8
                     print(f"  (watchdog: corrected {last_screen} -> {observation.screen.value}, sticky 8)")
@@ -528,8 +530,8 @@ def main() -> None:
                 # → unknown 0.60, Paddle 同帧 training_hub 0.83 —— 只让边缘帧付
                 # 慢引擎成本; 认出后续静止帧走帧哈希复用, 0 成本。
                 observation = classify_hybrid(screenshot, profile, classify_ocr)
-                if observation.screen == Screen.UNKNOWN and classify_ocr is not ocr:
-                    observation = classify_hybrid(screenshot, profile, ocr)
+                if observation.screen == Screen.UNKNOWN and isinstance(ocr, HybridOcrEngine):
+                    observation = classify_hybrid(screenshot, profile, ocr.detailed_engine)
             elif args.blue_mode:
                 observation = classify_by_blue_button(screenshot, profile)
             elif args.use_paddle:
@@ -541,8 +543,8 @@ def main() -> None:
                 # scroll forever looking for the runner (the "stuck on blessing"
                 # freeze). Hybrid disambiguates them by visual content.
                 observation = classify_hybrid(screenshot, profile, classify_ocr)
-                if observation.screen == Screen.UNKNOWN and classify_ocr is not ocr:
-                    observation = classify_hybrid(screenshot, profile, ocr)
+                if observation.screen == Screen.UNKNOWN and isinstance(ocr, HybridOcrEngine):
+                    observation = classify_hybrid(screenshot, profile, ocr.detailed_engine)
             else:
                 observation = classify_by_ocr(screenshot, profile, ocr)
             timer.record("classify", time.perf_counter() - _t0)
