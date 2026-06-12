@@ -712,6 +712,7 @@ def main() -> None:
                         print(f"  training_inspector_records={training_inspector.records} pending={training_inspector.pending}")
             elif observation.screen != Screen.TRAINING_SELECT:
                 training_inspector.reset()
+                policy._early_icons_seen.clear()
             # Journey Trading: item effects only show when an item is selected, so
             # the inspector clicks each row to read its effect, then buys by effect
             # (回体力/潜质点退还) — mirrors the training inspector.

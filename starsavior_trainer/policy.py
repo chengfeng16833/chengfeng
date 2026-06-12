@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable
 
@@ -298,6 +298,9 @@ class TrainerPolicy:
         self.config = config or PolicyConfig()
         # 赛前流程(主界面→进旅途)的单局进度标记, 防重复点击/死循环。
         self.prejourney_progress = PrejourneyProgress()
+        # 本回合已读到的各训练人头数(人头列只显示选中卡 → 轮询候选逐个读);
+        # 回到训练大厅(新回合)时清空。
+        self._early_icons_seen: dict[str, int] = {}
         self._pending_commission: Rect | None = None
         # Two-step relic confirm: remembers the relic card we clicked so the next
         # call clicks 确认 instead of re-evaluating "best" every frame. Without this
@@ -622,8 +625,27 @@ class TrainerPolicy:
                     f"{phase}: fail={known_fail}% universal, back to hub to rest",
                 )
             return Action("pause", None, f"{phase}: fail={known_fail}% universal, need rest")
+        # 人头列只显示选中卡 → 把本帧选中卡的读数记进本回合 seen, 决策用 seen
+        # (没读过的按 0)。前期还要轮询: 候选(主属性/韧性)没读全就逐个点过去。
+        for c in pool:
+            if c.icon_count >= 0:
+                self._early_icons_seen[c.attr] = c.icon_count
+        if early:
+            for attr in (primary, "guts"):
+                if attr in self._early_icons_seen:
+                    continue
+                card = next((c for c in pool if c.attr == attr), None)
+                if card is not None and not card.selected:
+                    return Action(
+                        "click", card.target,
+                        f"early: inspect support icons of {attr} (seen={self._early_icons_seen})",
+                    )
+        effective = [
+            replace(c, icon_count=self._early_icons_seen.get(c.attr, max(c.icon_count, 0)))
+            for c in pool
+        ]
         tiebreak = {primary: 0, "guts": 1}
-        scored = sorted(pool, key=lambda c: (-score_fn(c, primary), tiebreak.get(c.attr, 2)))
+        scored = sorted(effective, key=lambda c: (-score_fn(c, primary), tiebreak.get(c.attr, 2)))
         best = scored[0]
         if score_fn(best, primary) <= 0:
             return None  # 候选全 0 分(异常解析)→ 老逻辑兜底

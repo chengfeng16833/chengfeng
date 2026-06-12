@@ -1201,7 +1201,8 @@ def parse_training_select(
                 ring_signal = RingColorDetector().detect(crop_region(image, ring_rect))
                 ring = ring_signal.name
 
-        icon_count = _count_training_icons(image, profile, attr)
+        # 人头列是选中卡共享固定位, 只有选中卡能读到; 其余卡 -1=未知。
+        icon_count = _count_training_icons(image, profile) if selected else -1
 
         choices.append(
             TrainingChoice(
@@ -1223,20 +1224,19 @@ def parse_training_select(
     return choices
 
 
-def _count_training_icons(
-    image: Image.Image | None, profile: RegionProfile, attr: str
-) -> int:
-    """数某行训练上的支援卡人头(卡面纵列小头像)。
+def _count_training_icons(image: Image.Image | None, profile: RegionProfile) -> int:
+    """数当前**选中**训练的支援卡人头(右上固定纵列, 实机帧标定)。
 
-    区域 training_select_icons_{attr} 框住该行的人头列(实机帧校准后填),
-    在列内自上而下按等距槽位用 support_cards.has_card_icon 判定, 首个空槽停。
-    区域未配置 / 无图像 → 0(前期人头策略自动不触发, 回退检视器)。
+    实机确认: 人头列是选中训练共享的固定位置(选哪个训练就显示谁的支援卡),
+    所以只能读选中卡 — 前期策略用轮询检视(逐个选中候选读数)来比较。
+    区域 training_select_icons_selected 内按 ~118px 槽位自上而下
+    has_card_icon 判定, 首个空槽停。区域未配置 / 无图像 → -1(未知)。
     """
     if image is None:
-        return 0
-    col_rect = profile.regions.get(f"training_select_icons_{attr}")
+        return -1
+    col_rect = profile.regions.get("training_select_icons_selected")
     if col_rect is None:
-        return 0
+        return -1
     try:
         from starsavior_trainer.support_cards import has_card_icon
 
@@ -1244,7 +1244,7 @@ def _count_training_icons(
         slots = 8
         slot_h = column.height // slots
         if slot_h < 4:
-            return 0
+            return -1
         count = 0
         for slot in range(slots):
             patch = column.crop((0, slot * slot_h, column.width, (slot + 1) * slot_h))
@@ -1254,8 +1254,8 @@ def _count_training_icons(
                 break
         return count
     except Exception:
-        logger.debug("training icon count failed for %s", attr, exc_info=True)
-        return 0
+        logger.debug("training icon count failed", exc_info=True)
+        return -1
 
 
 def _has_training_select_anchor(texts: dict[str, str], profile: RegionProfile) -> bool:

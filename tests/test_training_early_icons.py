@@ -40,6 +40,35 @@ def _late_state(build: str = "power_focus") -> GameState:
     return GameState(build_profile=build, current_round=20)
 
 
+class IconPollingTest(unittest.TestCase):
+    """人头列只显示选中卡 → 前期轮询候选: 逐个点过去读数, 读全才打分。"""
+
+    def test_polls_unseen_candidates_first(self) -> None:
+        policy = TrainerPolicy()
+        # 全部未知(-1): 先点主属性卡读它的人头。
+        choices = [_choice("power", -1), _choice("stamina", -1), _choice("guts", -1)]
+        a1 = policy.decide_training_quantified(choices, _early_state())
+        self.assertIn("inspect support icons of power", a1.reason)
+
+        # 力量选中读到 2 个头 → 下一步点韧性去读。
+        choices2 = [_choice("power", 2, selected=True, fail=5), _choice("guts", -1)]
+        a2 = policy.decide_training_quantified(choices2, _early_state())
+        self.assertIn("inspect support icons of guts", a2.reason)
+
+        # 韧性选中读到 3 个头 → 候选读全, 韧性人头多 → 选韧性。
+        choices3 = [_choice("power", -1), _choice("guts", 3, selected=True, fail=5)]
+        a3 = policy.decide_training_quantified(choices3, _early_state())
+        self.assertIn("confirm training guts", a3.reason)
+
+    def test_seen_resets_via_clear(self) -> None:
+        policy = TrainerPolicy()
+        policy._early_icons_seen.update({"power": 2, "guts": 1})
+        policy._early_icons_seen.clear()  # live_loop 在离开训练画面时调用
+        choices = [_choice("power", -1), _choice("guts", -1)]
+        action = policy.decide_training_quantified(choices, _early_state())
+        self.assertIn("inspect", action.reason)
+
+
 class EarlyPhaseTest(unittest.TestCase):
     """≤12回合: 跑好感, 候选只有主属性/韧性, 人头最多者胜。"""
 

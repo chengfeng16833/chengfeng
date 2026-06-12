@@ -108,9 +108,10 @@ class TrainingChoice:
     # internal 属性键(power/stamina/guts/wisdom/speed), 来自卡位循环, 永远可靠
     # (name 可能被 OCR 中文名覆盖)。
     attr: str = ""
-    # 该训练上的支援卡人头数(卡面可见, 不用点开)。前期策略: 跟着人头练刷好感
-    # (2026-06-12 用户拍板)。0 = 没有/检测不出。
-    icon_count: int = 0
+    # 该训练上的支援卡人头数。人头列是**选中卡**共享固定位(实机确认), 所以
+    # 只有选中帧能读到: -1 = 未知(没选中过), ≥0 = 选中时读到的真实数。
+    # 前期策略轮询候选逐个选中读数比较(跟人头刷好感, 2026-06-12 用户拍板)。
+    icon_count: int = -1
     # Whether this card is currently highlighted/selected (only the selected card
     # shows its 失败率 on screen). The screen-level confirm (训练) button is carried
     # on each choice so the policy can confirm once the desired card is selected.
