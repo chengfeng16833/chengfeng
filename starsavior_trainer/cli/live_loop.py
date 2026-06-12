@@ -16,6 +16,8 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+from PIL import Image
+
 os.environ.setdefault("FLAGS_use_mkldnn", "0")
 # Quiet noisy third-party loggers (PaddleOCR/paddle) WITHOUT muting our own
 # starsavior.* logger. (Previously this was a blanket logging.disable(CRITICAL)
@@ -35,6 +37,7 @@ from starsavior_trainer.training_inspector import TrainingInspector
 from starsavior_trainer.shop_inspector import ShopInspector
 from starsavior_trainer.commission_inspector import CommissionInspector
 from starsavior_trainer.round_tracker import RoundTracker
+from starsavior_trainer.timing import StageTimer
 from starsavior_trainer.executor import (
     DryRunExecutor,
     PyAutoGuiExecutor,
@@ -60,7 +63,7 @@ from starsavior_trainer.models import (
     TrainingChoice,
     TrainingHubStatus,
 )
-from starsavior_trainer.ocr import NoopOcrEngine, PaddleOcrEngine
+from starsavior_trainer.ocr import NoopOcrEngine, PaddleOcrEngine, create_hybrid_ocr_engine
 from starsavior_trainer.policy import TrainerPolicy, _is_iterable_of
 from starsavior_trainer.regions import load_region_profile, scale_region_profile, RegionProfile
 from starsavior_trainer.run_config import PreJourneyConfig
@@ -101,6 +104,24 @@ logger = get_logger("live_loop")
 # advance" request) — but still classifies before every click, so we never click
 # blindly into the screen that comes next.
 _ADVANCE_SCREENS = frozenset({Screen.DIALOGUE, Screen.POST_TRAINING, Screen.REWARD, Screen.GOAL_LIST})
+
+
+# ---------------------------------------------------------------------------
+# 帧哈希(提速3): 画面和上一帧几乎一样时跳过整屏 OCR 分类, 复用上帧结果。
+# payload 每帧仍重读(检视器 +N 面板这类局部变化不能拿旧数据); UNKNOWN 不复用
+# (静止的新画面必须反复重识别, 否则加了新锚也认不出来 → 卡死)。
+# ---------------------------------------------------------------------------
+
+
+def _frame_signature(image: Image.Image) -> bytes:
+    return image.convert("L").resize((32, 18)).tobytes()
+
+
+def _frames_similar(a: bytes | None, b: bytes | None) -> bool:
+    if not a or not b or len(a) != len(b):
+        return False
+    diff = sum(1 for x, y in zip(a, b) if abs(x - y) > 10)
+    return diff <= len(a) * 0.01  # ≤1% 缩略像素变化视为同帧(动效画面自然超限)
 _ADVANCE_SLEEP = 0.35
 # TRAINING_SELECT: the inspector clicks 力量/体力/韧性 in quick succession on the
 # SAME screen (no transition) — it only needs the preview gain to render, not the
@@ -270,6 +291,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="pyautogui",
         help="真实点击的执行器: pyautogui(默认, 移动系统鼠标) / sendinput(Win32 SendInput, 点完还原光标)。",
     )
+    parser.add_argument(
+        "--ocr-engine",
+        choices=("paddle", "hybrid", "noop"),
+        default="paddle",
+        help="OCR 引擎: paddle(默认) / hybrid(WinRT快路径+Paddle精读回退, 提速) / noop。",
+    )
     return parser
 
 
@@ -326,13 +353,13 @@ def main() -> None:
         executor = SendInputExecutor()
     else:
         executor = PyAutoGuiExecutor()
-    ocr = _create_ocr(args.use_paddle)
+    ocr = _create_ocr(args.use_paddle, args.ocr_engine)
     blue_detector = BlueButtonDetector() if (args.blue_mode or args.hybrid_mode) else None
 
     if args.hybrid_mode:
         mode_label = "hybrid"
         args.use_paddle = True  # Hybrid mode needs real OCR
-        ocr = _create_ocr(True)
+        ocr = _create_ocr(True, args.ocr_engine)
     elif args.blue_mode:
         mode_label = "blue-button"
     elif args.use_paddle:
@@ -365,6 +392,11 @@ def main() -> None:
     last_character_click_target = None
     consecutive_unknown = 0
     was_paused = False
+    # 提速1/3: 环节计时器(每20帧输出耗时摘要) + 帧哈希复用分类。
+    timer = StageTimer(report_every=20)
+    last_frame_sig: bytes | None = None
+    last_screen: Screen | None = None
+    last_screen_confidence: float = 0.0
     try:
         while args.max_iterations == 0 or iteration < args.max_iterations:
             # Mouse-corner emergency stop, checked FIRST every iteration. The most
@@ -389,18 +421,31 @@ def main() -> None:
                 was_paused = False
 
             iteration += 1
+            timer.frame_start()
 
             # Capture via PrintWindow (inside capture_window): works even when the
             # game is covered/unfocused, so we no longer hide the console or steal
             # focus just to grab a frame (dry-run is fully non-invasive now).
+            _t0 = time.perf_counter()
             screenshot, client_window = capture_window(args.window_title)
             profile = scale_region_profile(base_profile, screenshot.size)
             reader = RegionOcrReader(profile, ocr)
+            timer.record("capture", time.perf_counter() - _t0)
 
             print(f"\n--- iteration {iteration} ---")
 
-            # Classify screen
-            if args.hybrid_mode:
+            # Classify screen — 帧没变(哈希同)且上帧非 UNKNOWN 时直接复用,
+            # 省掉整屏 OCR(提速3); 否则照常分类。
+            _t0 = time.perf_counter()
+            frame_sig = _frame_signature(screenshot)
+            if (
+                _frames_similar(frame_sig, last_frame_sig)
+                and last_screen is not None
+                and last_screen != Screen.UNKNOWN
+            ):
+                observation = Observation(screen=last_screen, confidence=last_screen_confidence)
+                print("  (frame unchanged, classification reused)")
+            elif args.hybrid_mode:
                 observation = classify_hybrid(screenshot, profile, ocr)
             elif args.blue_mode:
                 observation = classify_by_blue_button(screenshot, profile)
@@ -415,6 +460,10 @@ def main() -> None:
                 observation = classify_hybrid(screenshot, profile, ocr)
             else:
                 observation = classify_by_ocr(screenshot, profile, ocr)
+            timer.record("classify", time.perf_counter() - _t0)
+            last_frame_sig = frame_sig
+            last_screen = observation.screen
+            last_screen_confidence = observation.confidence
 
             logger.info(f"classified screen={observation.screen.value} confidence={observation.confidence:.2f}")
             if observation.screen in (Screen.CHARACTER_SELECT, Screen.BLESSING_SETUP):
@@ -450,21 +499,26 @@ def main() -> None:
                         Action("click", Rect(cx, cy, 1, 1), f"unknown: click {spot} to advance", repeat=2)
                     )
                     print(f"  unknown screen, click {spot} to advance ({consecutive_unknown})")
+                    timer.frame_done()
                     # 转场/展示页用快节奏重试, 不睡满 --interval(提速主力)。
                     time.sleep(_ADVANCE_SLEEP)
                 else:
                     print(f"  unknown screen, pausing (consecutive={consecutive_unknown})")
+                    timer.frame_done()
                     time.sleep(args.interval)
                 continue
             consecutive_unknown = 0
 
             # Parse payload
+            _t0 = time.perf_counter()
             if args.blue_mode:
                 payload = _read_screen_payload_blue(observation.screen, screenshot, profile, blue_detector, args.verbose)
             elif args.hybrid_mode:
                 payload = _read_screen_payload_ocr(observation.screen, screenshot, profile, reader, args.verbose)
             else:
                 payload = _read_screen_payload_ocr(observation.screen, screenshot, profile, reader, args.verbose)
+
+            timer.record("parse", time.perf_counter() - _t0)
 
             if payload is not None:
                 observation = Observation(screen=observation.screen, confidence=observation.confidence, payload=payload)
@@ -502,6 +556,7 @@ def main() -> None:
             print(f"  current_round={round_tracker.current_round}")
 
             # Decide
+            _t0 = time.perf_counter()
             action = None
             # BLESSING_CHOICE goes through the policy (decide_blessing_choice): pick the
             # highest-value blessing, same-value → topmost, two-step confirm. The old
@@ -564,6 +619,7 @@ def main() -> None:
             else:
                 consecutive_character_confirms = 0
                 last_character_click_target = None
+            timer.record("decide", time.perf_counter() - _t0)
             logger.info(f"decision: {action.kind} target={action.target} reason={action.reason}")
             screen_action = map_action_to_rect(action, screenshot.size, client_window.rect)
             if action.target is not None:
@@ -584,8 +640,11 @@ def main() -> None:
                     print("\n[急停] 鼠标移到屏幕角落，已停止 bot，控制权交还。")
                     return
                 activate_window(client_window.hwnd)
+            _t0 = time.perf_counter()
             result = executor.execute(screen_action)
+            timer.record("execute", time.perf_counter() - _t0)
             logger.info(f"executed: {result.kind} point={result.point} executed={result.executed}")
+            timer.frame_done()
 
             # Advance screens (reward / dialogue / post-training) re-capture fast so
             # we don't crawl one click per --interval through them.
@@ -960,7 +1019,11 @@ def _screen_to_prefix(screen: Screen) -> str | None:
     return mapping.get(screen)
 
 
-def _create_ocr(use_paddle: bool):
+def _create_ocr(use_paddle: bool, engine: str = "paddle"):
+    if engine == "hybrid":
+        # 提速2: WinRT 快路径(实测区域级 0.01-0.04s, Paddle 0.3-0.5s)+
+        # Paddle 精读回退。winsdk 缺失/任一引擎不可用时自动降级, 永不崩。
+        return create_hybrid_ocr_engine()
     if use_paddle:
         try:
             return PaddleOcrEngine()
