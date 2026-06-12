@@ -23,6 +23,7 @@ from starsavior_trainer.classifier import (
     _has_dialogue_signature,
     _has_event_choice_signature,
     _has_filter_dialog_signature,
+    _has_final_result_signature,
     _has_game_menu_signature,
     _has_goal_list_signature,
     _has_initial_signature,
@@ -464,6 +465,15 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         priority=1,
         anchor_fn=_has_skip_battle_confirm_signature, anchor_confidence=1.0,
         parse_fn=parse_skip_battle_confirm, ocr_prefixes=["skip_battle_confirm"],
+    ),
+    # 「最终旅程结果」页: 点确认收官(整局最后一关; 被误判 relic 会 pause)。
+    Screen.FINAL_RESULT: DelegatingScreenHandler(
+        Screen.FINAL_RESULT,
+        lambda obs, state, policy: Action(
+            "click", policy.config.new_blessing_confirm_button, "final journey result, click 确认",
+        ),
+        priority=1,
+        anchor_fn=_has_final_result_signature, anchor_confidence=1.0,
     ),
     # 终局「获得全新祝福」页: 点确认收下(被误判 relic_choice 点中心无效 —
     # 实跑卡点14)。priority=1 抢在 relic 误判之前。

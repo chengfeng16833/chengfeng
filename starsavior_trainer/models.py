@@ -59,6 +59,8 @@ class Screen(str, Enum):
     JOURNEY_END = "journey_end"
     # 终局「获得全新祝福」结算页(旅程成果已化为祝福 + 确认)。点确认收下。
     NEW_BLESSING = "new_blessing"
+    # 「最终旅程结果」页(评级+总分+目标清单 + 重新观测/确认)。整局最后一关。
+    FINAL_RESULT = "final_result"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or

@@ -86,6 +86,8 @@ _FAST_ANCHORS: tuple[str, ...] = (
     "journey_end_button",
     # 终局「获得全新祝福」页标题。
     "new_blessing_title",
+    # 「最终旅程结果」页标题(整局最后一关)。
+    "final_result_title",
 )
 
 
@@ -411,6 +413,7 @@ ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
     Screen.BATTLE_RESULT: ["battle_result_text", "battle_result_buttons"],
     Screen.JOURNEY_END: ["journey_end_button"],
     Screen.NEW_BLESSING: ["new_blessing_title"],
+    Screen.FINAL_RESULT: ["final_result_title"],
     Screen.INITIAL: ["route_select_anchor_title", "route_select_route_title", "start_button"],
     Screen.CHARACTER_SELECT: ["character_select_anchor_title"],
     Screen.BLESSING_SETUP: ["blessing_setup_anchor_title"],
@@ -794,6 +797,12 @@ def _has_skip_battle_confirm_signature(anchors: dict[str, str]) -> bool:
         return True
     # v3 放弃战斗确认(FAIL 结算页点确认后弹出): 确定要放弃战斗吗?
     return "放弃战斗" in text
+
+
+def _has_final_result_signature(anchors: dict[str, str]) -> bool:
+    # 「最终旅程结果」页: 顶部标题(中段稳片段, 防 OCR 首尾误读)。
+    text = anchors.get("final_result_title", "")
+    return contains_any_text(text, ("最终旅程", "旅程结果"))
 
 
 def _has_new_blessing_signature(anchors: dict[str, str]) -> bool:
