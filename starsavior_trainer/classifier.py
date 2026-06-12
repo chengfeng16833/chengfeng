@@ -70,6 +70,11 @@ _FAST_ANCHORS: tuple[str, ...] = (
     # dialogue 签名先命中就直接返回了(实跑教训)。
     "event_choice_side_1",
     "dialogue_journey_text_area",
+    # D-DAY 交易的刷新/购买锚: 必须在快通道, 否则商品里恰好有两件「训练书」时
+    # training_select 的 ≥2 卡名条件被凑满而 SHOP 签名(priority 更先)在 fast
+    # 阶段读不到刷新 → 误判训练反复点卡(实跑教训, cdf62a2 的回归变体)。
+    "shop_refresh_button",
+    "shop_buy_button",
 )
 
 
@@ -824,6 +829,10 @@ def _has_training_select_signature(anchors: dict[str, str]) -> bool:
         "\u96c6\u4e2d\u8bad\u7ec3",
         "\u4fdd\u62a4\u8bad\u7ec3",
     )
+    # 排他: D-DAY 交易有右上「刷新」按钮而训练选择没有 —— 商品里恰好出现两件
+    # 「XX训练的禁书/秘笈」时 ≥2 卡名条件会被凑满(2026-06-12 实跑回归)。
+    if contains_any_text(anchors.get("shop_refresh_button", ""), ("刷新",)):
+        return False
     hits = sum(
         1
         for attr in ("power", "stamina", "guts", "wisdom", "speed")
