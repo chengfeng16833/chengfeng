@@ -292,8 +292,6 @@ class TrainerPolicy:
         self.config = config or PolicyConfig()
         # 赛前流程(主界面→进旅途)的单局进度标记, 防重复点击/死循环。
         self.prejourney_progress = PrejourneyProgress()
-        # 前期人头策略本回合已因失败率排除的属性(回到训练大厅时清空)。
-        self._early_icon_rejected: set[str] = set()
         self._pending_commission: Rect | None = None
         # Two-step relic confirm: remembers the relic card we clicked so the next
         # call clicks 确认 instead of re-evaluating "best" every frame. Without this
@@ -603,14 +601,23 @@ class TrainerPolicy:
         early = state.current_round is None or state.current_round <= 12
         score_fn = self.early_training_score if early else self.late_training_score
         phase = "early" if early else "late"
-        available = [c for c in choices if c.attr not in self._early_icon_rejected]
-        if not available:
-            return None  # 全被失败率排除 → 老逻辑(休息/换训练)
+        pool = list(choices)
+        if not pool:
+            return None
+        # 失败率全训练通用(由疲劳决定, 2026-06-12 用户机制知识): 任何一张卡
+        # 读到 ≥阈值 → 全部都一样高, 换训练无意义 → 直接回大厅休息。
+        known_fail = next((c.fail_rate for c in pool if c.fail_rate is not None), None)
+        if known_fail is not None and known_fail >= self.config.max_training_fail_rate:
+            self._needs_rest = True
+            back = next((c.back_button for c in pool if c.back_button is not None), None)
+            if back is not None:
+                return Action(
+                    "click", back,
+                    f"{phase}: fail={known_fail}% universal, back to hub to rest",
+                )
+            return Action("pause", None, f"{phase}: fail={known_fail}% universal, need rest")
         tiebreak = {primary: 0, "guts": 1}
-        scored = sorted(
-            available,
-            key=lambda c: (-score_fn(c, primary), tiebreak.get(c.attr, 2)),
-        )
+        scored = sorted(pool, key=lambda c: (-score_fn(c, primary), tiebreak.get(c.attr, 2)))
         best = scored[0]
         if score_fn(best, primary) <= 0:
             return None  # 候选全 0 分(异常解析)→ 老逻辑兜底
@@ -619,15 +626,8 @@ class TrainerPolicy:
         )
         if not best.selected:
             return Action("click", best.target, f"{phase}: select {best.attr} [{breakdown}]")
-        if best.fail_rate is not None and best.fail_rate >= self.config.max_training_fail_rate:
-            self._early_icon_rejected.add(best.attr)
-            return Action(
-                "pause", None,
-                f"{phase}: {best.attr} fail={best.fail_rate}% too risky, trying next",
-            )
         if best.confirm_button is None:
             return None
-        self._early_icon_rejected.clear()
         return Action(
             "click", best.confirm_button,
             f"confirm training {best.attr}: {phase} [{breakdown}] fail={best.fail_rate}%",

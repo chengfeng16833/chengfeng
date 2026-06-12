@@ -28,6 +28,7 @@ def _choice(
         icon_count=icons,
         selected=selected,
         confirm_button=Rect(2080, 1252, 400, 95),
+        back_button=Rect(60, 50, 90, 80),
     )
 
 
@@ -127,19 +128,24 @@ class TwoStepAndFailTest(unittest.TestCase):
         self.assertEqual(action.target, Rect(2080, 1252, 400, 95))
         self.assertIn("confirm training", action.reason)  # CSV 钩子依赖这个字样
 
-    def test_high_fail_rate_rejects_and_falls_to_next(self) -> None:
+    def test_high_fail_rate_goes_straight_to_rest(self) -> None:
+        # 失败率全训练通用(疲劳决定): 一张卡读到45% = 全部45%, 换训练无意义
+        # → 直接点返回回大厅 + 标记 _needs_rest(大厅会去休息)。
         policy = TrainerPolicy()
         choices = [_choice("power", 2, selected=True, fail=45), _choice("guts", 1)]
-        first = policy.decide_training_quantified(choices, _early_state())
-        self.assertEqual(first.kind, "pause")
-        second = policy.decide_training_quantified(choices, _early_state())
-        self.assertEqual(second.target, _choice("guts").target)
+        action = policy.decide_training_quantified(choices, _early_state())
+        self.assertEqual(action.kind, "click")
+        self.assertEqual(action.target, Rect(60, 50, 90, 80))  # back_button
+        self.assertIn("rest", action.reason)
+        self.assertTrue(policy._needs_rest)
 
-    def test_all_rejected_falls_back_to_none(self) -> None:
+    def test_universal_fail_rate_read_from_any_card(self) -> None:
+        # 哪怕显示失败率的不是最优卡(韧性选中45%), 也直接休息——通用失败率。
         policy = TrainerPolicy()
-        policy._early_icon_rejected.update({"power", "stamina", "guts", "wisdom", "speed"})
-        choices = [_choice("power", 3), _choice("guts", 2)]
-        self.assertIsNone(policy.decide_training_quantified(choices, _early_state()))
+        choices = [_choice("power", 5), _choice("guts", 0, selected=True, fail=45)]
+        action = policy.decide_training_quantified(choices, _early_state())
+        self.assertEqual(action.target, Rect(60, 50, 90, 80))
+        self.assertTrue(policy._needs_rest)
 
 
 class ScoreFormulaTest(unittest.TestCase):
