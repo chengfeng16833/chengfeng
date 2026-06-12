@@ -61,6 +61,8 @@ _FAST_ANCHORS: tuple[str, ...] = (
     "support_friend_list_anchor",
     "support_picker_borrow_anchor",
     "support_card_detail_anchor",
+    # 达成目标列表黑底展示页(不识别会 unknown 死循环)。
+    "goal_list_subtitle",
 )
 
 
@@ -381,6 +383,7 @@ ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
     Screen.SUPPORT_PICKER: ["support_picker_borrow_anchor"],
     Screen.SUPPORT_FRIEND_LIST: ["support_friend_list_anchor"],
     Screen.SUPPORT_CARD_DETAIL: ["support_card_detail_anchor"],
+    Screen.GOAL_LIST: ["goal_list_subtitle"],
     Screen.INITIAL: ["route_select_anchor_title", "route_select_route_title", "start_button"],
     Screen.CHARACTER_SELECT: ["character_select_anchor_title"],
     Screen.BLESSING_SETUP: ["blessing_setup_anchor_title"],
@@ -732,6 +735,16 @@ def _has_filter_dialog_signature(anchors: dict[str, str]) -> bool:
     if "筛选" not in title:
         return False
     return any(word in row for word in ("坦克", "突击者", "游侠", "术师", "刺客", "辅助"))
+
+
+def _has_goal_list_signature(anchors: dict[str, str]) -> bool:
+    # 「达成目标列表」黑底展示页: 画面中部副标题。黑屏其他锚全空, 这一条
+    # 读到就足够特异。实机 OCR 把「目」读成「自」(达成自标列表 0.92),
+    # 所以不用整词, 用「达成+列表」两个稳片段组合(布谷鸟时钟别名同款经验)。
+    text = anchors.get("goal_list_subtitle", "")
+    if "达成" in text and "列表" in text:
+        return True
+    return contains_any_text(text, ("目标列表", "自标列表"))
 
 
 def _has_support_friend_list_signature(anchors: dict[str, str]) -> bool:

@@ -436,6 +436,8 @@
     "support_friend_card_6": [2330, 850, 220, 250],
 
     "support_card_detail_anchor": [1310, 470, 240, 160],
-    "support_card_detail_select": [2210, 990, 250, 95]
+    "support_card_detail_select": [2210, 990, 250, 95],
+
+    "goal_list_subtitle": [1130, 565, 340, 70]
   }
 }

@@ -44,6 +44,10 @@ class Screen(str, Enum):
     SUPPORT_FRIEND_LIST = "support_friend_list"
     # 支援卡详情(旅程效果/专属效果 标签列 + 右下蓝色「选择」)。
     SUPPORT_CARD_DETAIL = "support_card_detail"
+    # 「达成目标列表」全屏黑底展示页(星光引导者 + 打勾目标列表 + 底部
+    # 点击以继续)。评鉴战/远征达成后出现; 黑屏让所有常规锚都读不出字,
+    # 不识别它就 unknown 死循环(2026-06-12 实跑卡死点)。
+    GOAL_LIST = "goal_list"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or

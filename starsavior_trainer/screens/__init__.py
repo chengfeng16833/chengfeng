@@ -23,6 +23,7 @@ from starsavior_trainer.classifier import (
     _has_event_choice_signature,
     _has_filter_dialog_signature,
     _has_game_menu_signature,
+    _has_goal_list_signature,
     _has_initial_signature,
     _has_main_menu_panel_signature,
     _has_main_screen_signature,
@@ -435,6 +436,16 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         Screen.MAIN_MENU_PANEL, decide_main_menu_panel, priority=11,
         anchor_fn=_has_main_menu_panel_signature, anchor_confidence=1.0,
         parse_fn=parse_main_menu_panel, ocr_prefixes=["main_menu_panel"],
+    ),
+    # 「达成目标列表」黑底展示页: 点底部「点击以继续」推进(与获得奖励的
+    # 继续提示几乎同位, 复用 reward_continue_button)。
+    Screen.GOAL_LIST: DelegatingScreenHandler(
+        Screen.GOAL_LIST,
+        lambda obs, state, policy: Action(
+            "click", policy.config.reward_continue_button, "goal list shown, click 点击以继续", repeat=2,
+        ),
+        priority=16,
+        anchor_fn=_has_goal_list_signature, anchor_confidence=1.0,
     ),
     # 好友卡流程三画面(标题与旅程起点共用): 好友卡墙(可借用次数)必须排在
     # 支援卡选择(可借用)之前, 否则「可借用次数」也含「可借用」会被截胡。
