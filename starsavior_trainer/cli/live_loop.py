@@ -472,7 +472,11 @@ def main() -> None:
             _t0 = time.perf_counter()
             screenshot, client_window = capture_window(args.window_title)
             profile = scale_region_profile(base_profile, screenshot.size)
-            reader = RegionOcrReader(profile, ocr)
+            # payload 精读一律用 detailed(Paddle): WinRT 读中文小字(力量:45)
+            # 会错得很自信(conf=1.0 不触发回退) → 刻印数值全 None 卡死(实跑教训)。
+            # 区域少, Paddle 成本可控; 分类的快路径不受影响。
+            reader_ocr = ocr.detailed_engine if isinstance(ocr, HybridOcrEngine) else ocr
+            reader = RegionOcrReader(profile, reader_ocr)
             timer.record("capture", time.perf_counter() - _t0)
 
             print(f"\n--- iteration {iteration} ---")
