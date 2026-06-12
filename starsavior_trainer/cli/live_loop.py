@@ -666,13 +666,25 @@ def main() -> None:
                         cx = client_window.rect.x + client_window.rect.width // 2
                         cy = client_window.rect.y + int(client_window.rect.height * 0.88)
                         spot = "bottom"
-                    executor.execute(
-                        Action("click", Rect(cx, cy, 1, 1), f"unknown: click {spot} to advance", repeat=2)
-                    )
+                    advance_action = Action("click", Rect(cx, cy, 1, 1), f"unknown: click {spot} to advance", repeat=2)
+                    executor.execute(advance_action)
                     print(f"  unknown screen, click {spot} to advance ({consecutive_unknown})")
                     timer.frame_done()
-                    # 转场/展示页用快节奏重试, 不睡满 --interval(提速主力)。
-                    time.sleep(_ADVANCE_SLEEP)
+                    # 盲点 burst(固定推进位): 转场期不每帧全识别, 连点+哈希
+                    # 盯梢, 画面剧变(新画面出现)才回主循环识别一次。
+                    unknown_sig = _frame_signature(screenshot)
+                    for burst_i in range(12):
+                        time.sleep(0.15)
+                        executor.execute(advance_action)
+                        if burst_i % 3 == 2:
+                            try:
+                                quick_shot, _ = capture_window(args.window_title)
+                            except Exception:
+                                continue
+                            qsig = _frame_signature(quick_shot)
+                            diff = sum(1 for a, b in zip(qsig, unknown_sig) if abs(a - b) > 10) / len(qsig)
+                            if diff > 0.08:
+                                break
                 else:
                     print(f"  unknown screen, pausing (consecutive={consecutive_unknown})")
                     timer.frame_done()
@@ -878,12 +890,12 @@ def main() -> None:
                 bot_last_input_tick = _last_input_tick()
             timer.frame_done()
 
-            # 剧情快进 burst(2026-06-12 用户观察: 剧情大量空白时间, 盲点 skip
-            # 提速数倍): 已确认 DIALOGUE 且点了 skip → 不再每帧整套 OCR, 直接
-            # 高频连点同一目标(~7Hz), 每 3 下抓缩略帧, 画面结构剧变(>8%, 进入
-            # 选项/新画面/误开菜单)立即退出回正常识别。
+            # 推进画面快进 burst(2026-06-12 用户观察: 推进类画面点位全固定,
+            # 内容随机但点位不随机): 已确认画面类型且点击有效 → 不再每帧整套
+            # OCR, 直接高频盲点同一固定位(~7Hz), 每 3 下抓缩略帧, 画面结构
+            # 剧变(>8%, 出现选项/新画面/误开菜单)立即退出回正常识别。
             if (
-                observation.screen == Screen.DIALOGUE
+                observation.screen in (Screen.DIALOGUE, Screen.REWARD, Screen.POST_TRAINING, Screen.GOAL_LIST)
                 and args.execute
                 and action.kind == "click"
                 and result.executed
