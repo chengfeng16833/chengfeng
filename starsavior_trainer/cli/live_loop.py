@@ -137,6 +137,20 @@ def _append_training_log(round_no: int | None, reason: str, choices) -> None:
         logger.debug("training_log.csv 写入失败", exc_info=True)
 
 
+def _last_input_tick() -> int:
+    """Windows 全局最后一次键鼠输入的 tick(GetLastInputInfo)。"""
+    import ctypes
+
+    class LASTINPUTINFO(ctypes.Structure):
+        _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+    info = LASTINPUTINFO()
+    info.cbSize = ctypes.sizeof(LASTINPUTINFO)
+    if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)):
+        return int(info.dwTime)
+    return 0
+
+
 def _frame_signature(image: Image.Image) -> bytes:
     return image.convert("L").resize((32, 18)).tobytes()
 
@@ -321,6 +335,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="paddle",
         help="OCR 引擎: paddle(默认) / hybrid(WinRT快路径+Paddle精读回退, 提速) / noop。",
     )
+    parser.add_argument(
+        "--polite-idle",
+        type=float,
+        default=0,
+        help="礼让模式: 检测到你在用键盘鼠标就暂停, 空闲 N 秒后自动继续(0=关闭)。"
+        "适合边看视频边挂机; bot 自己的点击不会触发暂停。",
+    )
     return parser
 
 
@@ -454,6 +475,10 @@ def main() -> None:
     # 粘性复核: 看门狗纠正发生后, 连续 N 帧继续用 Paddle 分类(误判画面通常
     # 静止多帧, 只纠正一帧的话下一帧又被快引擎认错 — 实跑教训)。
     detailed_sticky = 0
+    # 礼让模式: bot 每次动完键鼠记下输入 tick; 之后 tick 又变 = 用户在用电脑
+    # → 暂停, 等用户空闲 polite_idle 秒再继续。
+    bot_last_input_tick = _last_input_tick() if args.polite_idle > 0 else 0
+    polite_paused_printed = False
     try:
         while args.max_iterations == 0 or iteration < args.max_iterations:
             # Mouse-corner emergency stop, checked FIRST every iteration. The most
@@ -476,6 +501,25 @@ def main() -> None:
             if was_paused:
                 print("已恢复")
                 was_paused = False
+
+            # 礼让模式: 检测到用户键鼠活动(非 bot 自己的)→ 暂停到空闲满 N 秒。
+            if args.polite_idle > 0 and args.execute:
+                import ctypes as _ct
+
+                now_tick = _ct.windll.kernel32.GetTickCount()
+                last_tick = _last_input_tick()
+                user_acted = last_tick > bot_last_input_tick
+                idle_seconds = max(0, now_tick - last_tick) / 1000.0
+                if user_acted and idle_seconds < args.polite_idle:
+                    if not polite_paused_printed:
+                        print(f"[礼让] 检测到你在用电脑, 空闲 {args.polite_idle:.0f}s 后自动继续…")
+                        polite_paused_printed = True
+                    time.sleep(1.0)
+                    continue
+                if polite_paused_printed:
+                    print("[礼让] 你空闲了, bot 继续干活")
+                    polite_paused_printed = False
+                    bot_last_input_tick = _last_input_tick()
 
             iteration += 1
             timer.frame_start()
@@ -788,6 +832,9 @@ def main() -> None:
             result = executor.execute(screen_action)
             timer.record("execute", time.perf_counter() - _t0)
             logger.info(f"executed: {result.kind} point={result.point} executed={result.executed}")
+            if args.polite_idle > 0:
+                # bot 自己的键鼠动作不算"用户活动": 动完立刻记下输入 tick 基线。
+                bot_last_input_tick = _last_input_tick()
             timer.frame_done()
 
             # Advance screens (reward / dialogue / post-training) re-capture fast so
