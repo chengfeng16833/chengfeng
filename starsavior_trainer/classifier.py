@@ -66,7 +66,10 @@ _FAST_ANCHORS: tuple[str, ...] = (
     # 跳过战斗二次确认弹窗(不识别会被蓝键误判成快转设置 → pause 死循环)。
     "skip_battle_confirm_text",
     # 对话式事件选项(右侧选项行; 不识别会被当 dialogue 反复点无效 skip)。
+    # 双锚的另一半(底部字幕)也必须在快通道, 否则 fast pass 阶段双锚永不成立,
+    # dialogue 签名先命中就直接返回了(实跑教训)。
     "event_choice_side_1",
+    "dialogue_journey_text_area",
 )
 
 
