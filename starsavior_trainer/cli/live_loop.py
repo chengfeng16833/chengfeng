@@ -841,11 +841,28 @@ def main() -> None:
             # Advance screens (reward / dialogue / post-training) re-capture fast so
             # we don't crawl one click per --interval through them.
             if observation.screen in _ADVANCE_SCREENS:
-                time.sleep(_ADVANCE_SLEEP)
+                base_wait = _ADVANCE_SLEEP
             elif observation.screen == Screen.TRAINING_SELECT:
-                time.sleep(min(_TRAINING_SELECT_SLEEP, args.interval))
+                base_wait = min(_TRAINING_SELECT_SLEEP, args.interval)
             else:
-                time.sleep(args.interval)
+                base_wait = args.interval
+            # 事件驱动等待(提速): 点击后画面通常 0.3-0.6s 就切换, 固定睡满
+            # interval 纯浪费 —— 快速轮询缩略帧哈希(抓帧仅 ~0.04s), 画面一变
+            # 就提前结束等待(留 0.2s 稳定缓冲让转场动画走完)。静止画面照旧等满。
+            if args.execute and action.kind == "click" and base_wait > 0.5:
+                waited = 0.0
+                while waited < base_wait:
+                    time.sleep(0.15)
+                    waited += 0.15
+                    try:
+                        quick_shot, _ = capture_window(args.window_title)
+                    except Exception:
+                        continue
+                    if not _frames_similar(_frame_signature(quick_shot), frame_sig):
+                        time.sleep(0.2)
+                        break
+            else:
+                time.sleep(base_wait)
 
     except KeyboardInterrupt:
         print("\nstopped by user")

@@ -18,6 +18,24 @@ logger = get_logger("classifier")
 # only these first (then matching) avoids reading all ~54 anchor regions every
 # frame — the dominant per-iteration cost (~5-6s). The full sweep runs only as a
 # fallback when these don't give a confident match (rare / title-less screens).
+# 超高频锚(提速: 训练循环里 90% 的帧是这几个画面, 先读先判, 命中即返回,
+# 不必每帧把 _FAST_ANCHORS 28+ 个锚全 OCR 一遍)。未命中再读完整快锚集。
+_HOT_ANCHORS: tuple[str, ...] = (
+    "training_hub_action_training",
+    "training_hub_action_commission",
+    "training_hub_action_rest",
+    "training_select_card_power", "training_select_card_stamina",
+    "training_select_card_guts", "training_select_card_wisdom", "training_select_card_speed",
+    # 排他锚必须随行: D-DAY 商店两件训练书会凑满 training_select 的 ≥2 卡名
+    # 条件, 没有刷新锚在场, 误判会在高频层复活(实跑教训 ef9e56e)。
+    "shop_refresh_button",
+    "dialogue_journey_title",
+    "dialogue_intro_skip_button",
+    "post_training_title",
+    "reward_title",
+    "event_choice_title",
+)
+
 _FAST_ANCHORS: tuple[str, ...] = (
     "route_select_anchor_title",
     "character_select_anchor_title",
@@ -106,7 +124,15 @@ def classify_by_ocr(
     to the full sweep whenever the fast pass is confident.
     """
 
-    fast_anchors = _read_anchor_regions(image, profile, ocr, names=_FAST_ANCHORS)
+    # 三级金字塔: 超高频锚(训练循环 90% 的帧在这里就解决) → 完整快锚 → 全扫。
+    hot_anchors = _read_anchor_regions(image, profile, ocr, names=_HOT_ANCHORS)
+    best_screen, best_confidence = _match_screen(hot_anchors)
+    if best_confidence >= min_confidence:
+        return Observation(screen=best_screen, confidence=best_confidence)
+
+    rest_names = tuple(name for name in _FAST_ANCHORS if name not in _HOT_ANCHORS)
+    fast_anchors = dict(hot_anchors)
+    fast_anchors.update(_read_anchor_regions(image, profile, ocr, names=rest_names))
     best_screen, best_confidence = _match_screen(fast_anchors)
     if best_confidence >= min_confidence:
         return Observation(screen=best_screen, confidence=best_confidence)
