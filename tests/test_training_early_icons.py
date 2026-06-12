@@ -11,13 +11,15 @@ from starsavior_trainer.models import GameState, Rect, TrainingChoice
 from starsavior_trainer.policy import TrainerPolicy
 
 
-def _choice(attr: str, icons: int, *, selected: bool = False, fail: int | None = None) -> TrainingChoice:
+def _choice(
+    attr: str, icons: int, *, selected: bool = False, fail: int | None = None, ring: str = "none"
+) -> TrainingChoice:
     order = ("power", "stamina", "guts", "wisdom", "speed")
     y = 338 + order.index(attr) * 150
     return TrainingChoice(
         name=f"{attr}训练",
         stat_gain=0,
-        ring="none",
+        ring=ring,
         fail_rate=fail,
         target=Rect(1750, y, 650, 112),
         attr=attr,
@@ -70,6 +72,53 @@ class EarlyIconTrainingTest(unittest.TestCase):
         policy._early_icon_rejected.update({"power", "guts"})
         choices = [_choice("power", 3), _choice("guts", 2)]
         self.assertIsNone(policy.decide_training_early_icons(choices, GameState()))
+
+
+class StaminaBuildEarlyIconTest(unittest.TestCase):
+    """体力角色(2026-06-12 用户拍板): 候选 = 体力 > 韧性, 力量不参与。"""
+
+    def test_stamina_build_candidates_are_stamina_guts(self) -> None:
+        policy = TrainerPolicy()
+        state = GameState(build_profile="stamina_tank")
+        choices = [_choice("power", 8), _choice("stamina", 2), _choice("guts", 1)]
+        action = policy.decide_training_early_icons(choices, state)
+        # 力量人头再多也不练(不在体力系候选); 体力2 > 韧性1。
+        self.assertEqual(action.target, _choice("stamina", 2).target)
+
+    def test_stamina_build_tie_prefers_stamina(self) -> None:
+        policy = TrainerPolicy()
+        state = GameState(build_profile="stamina_tank")
+        choices = [_choice("stamina", 3), _choice("guts", 3)]
+        action = policy.decide_training_early_icons(choices, state)
+        self.assertEqual(action.target, _choice("stamina", 3).target)
+
+
+class EarlyScoreQuantifiedTest(unittest.TestCase):
+    """量化打分: 分数 = 主属性底分10 + 人头×50 + 彩环(rainbow40/gold25/blue10)。"""
+
+    def test_score_formula(self) -> None:
+        policy = TrainerPolicy()
+        cands = ("power", "guts")
+        self.assertEqual(policy.early_training_score(_choice("power", 2), cands), 10 + 100)
+        self.assertEqual(policy.early_training_score(_choice("guts", 2), cands), 100)
+        self.assertEqual(
+            policy.early_training_score(_choice("guts", 2, ring="gold"), cands), 100 + 25
+        )
+
+    def test_ring_can_break_icon_tie_within_candidates(self) -> None:
+        # 同人头数: 韧性带金环(+25) > 力量底分(+10) → 选韧性。
+        policy = TrainerPolicy()
+        choices = [_choice("power", 2), _choice("guts", 2, ring="gold")]
+        action = policy.decide_training_early_icons(choices, GameState())
+        self.assertEqual(action.target, _choice("guts", 2).target)
+
+    def test_reason_contains_score_breakdown(self) -> None:
+        # 决策理由带分数明细, 复盘/调权重时能看懂为什么选它。
+        policy = TrainerPolicy()
+        choices = [_choice("power", 3), _choice("guts", 1)]
+        action = policy.decide_training_early_icons(choices, GameState())
+        self.assertIn("power=160", action.reason)
+        self.assertIn("guts=50", action.reason)
 
 
 if __name__ == "__main__":

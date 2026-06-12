@@ -532,34 +532,62 @@ class TrainerPolicy:
         # screen.
         return Action("click", dialogue.skip_button, f"dialogue {dialogue.variant}, click skip", repeat=3)
 
-    # 力量系角色的属性优先级(2026-06-12 用户拍板): 力量 > 韧性 > 体力 > 专注 > 保护。
-    EARLY_ICON_PREFERRED = ("power", "guts")
+    # 前期(≤12回合)候选训练表(2026-06-12 用户拍板, 主属性在前):
+    #   力量系 = 力量 > 韧性; 体力系 = 体力 > 韧性; 其余 build 取 主属性+韧性。
+    EARLY_CANDIDATES_BY_PROFILE: dict[str, tuple[str, str]] = {
+        "power_focus": ("power", "guts"),
+        "stamina_tank": ("stamina", "guts"),
+        "durability_focus": ("stamina", "guts"),
+    }
+    # 量化权重: 人头主导(差1个人头=50分 必定翻转底分差10), 底分只破平手,
+    # 彩环沿用 ring_bonus(rainbow40/gold25/blue10, 只在候选内加分)。
+    EARLY_ICON_WEIGHT = 50
+    EARLY_PRIMARY_BASE = 10
+
+    def _early_candidates(self, build_profile: str) -> tuple[str, str]:
+        explicit = self.EARLY_CANDIDATES_BY_PROFILE.get(build_profile)
+        if explicit is not None:
+            return explicit
+        primary = self.config.blessing_attribute_by_profile.get(build_profile, "power")
+        return (primary, "guts") if primary != "guts" else ("guts", "stamina")
+
+    def early_training_score(self, choice: TrainingChoice, candidates: tuple[str, str]) -> int:
+        """前期训练量化分(可解释): 底分 + 人头×50 + 彩环。"""
+        base = self.EARLY_PRIMARY_BASE if choice.attr == candidates[0] else 0
+        return (
+            base
+            + choice.icon_count * self.EARLY_ICON_WEIGHT
+            + self.config.ring_bonus.get(choice.ring, 0)
+        )
 
     def decide_training_early_icons(
         self, choices: Iterable[TrainingChoice], state: GameState
     ) -> Action | None:
-        """前期(≤12回合)人头优先策略: 在 力量/韧性 中选支援卡人头最多的。
+        """前期(≤12回合)人头优先策略: 候选属性内按量化分选最高。
 
         目标是把支援卡好感喂满(用户实战经验: 好感不满训练收益上不去, 之前
         纯数值优先导致力量角色去练体力)。人头卡面可见, 不需要逐卡检视(提速)。
         两步: 目标卡未选中 → 点卡; 选中后看失败率, 超阈值换下一候选;
         候选全不可用 / 人头全 0(区域未校准) → 返回 None 交回检视器老逻辑。
         """
-        pool = [c for c in choices if c.attr in self.EARLY_ICON_PREFERRED]
+        candidates_attrs = self._early_candidates(state.build_profile)
+        pool = [c for c in choices if c.attr in candidates_attrs]
         if not pool or all(c.icon_count <= 0 for c in pool):
             return None  # 人头检测不可用(几何未校准)→ 老逻辑兜底
-        rejected = self._early_icon_rejected
-        candidates = [c for c in pool if c.attr not in rejected]
-        if not candidates:
-            return None  # 力量/韧性都被失败率排除 → 老逻辑(会去休息/换训练)
-        # 人头多者胜; 平手按 力量 > 韧性(EARLY_ICON_PREFERRED 顺序)。
-        candidates.sort(key=lambda c: (-c.icon_count, self.EARLY_ICON_PREFERRED.index(c.attr)))
-        best = candidates[0]
+        available = [c for c in pool if c.attr not in self._early_icon_rejected]
+        if not available:
+            return None  # 候选全被失败率排除 → 老逻辑(会去休息/换训练)
+        scored = sorted(
+            available,
+            key=lambda c: (-self.early_training_score(c, candidates_attrs), candidates_attrs.index(c.attr)),
+        )
+        best = scored[0]
+        breakdown = " vs ".join(
+            f"{c.attr}={self.early_training_score(c, candidates_attrs)}(icons{c.icon_count}/{c.ring})"
+            for c in scored
+        )
         if not best.selected:
-            return Action(
-                "click", best.target,
-                f"early icons: select {best.attr} (icons={best.icon_count})",
-            )
+            return Action("click", best.target, f"early icons: select {best.attr} [{breakdown}]")
         if best.fail_rate is not None and best.fail_rate >= self.config.max_training_fail_rate:
             self._early_icon_rejected.add(best.attr)
             return Action(
@@ -571,7 +599,7 @@ class TrainerPolicy:
         self._early_icon_rejected.clear()
         return Action(
             "click", best.confirm_button,
-            f"confirm training {best.attr}: early icons={best.icon_count} fail={best.fail_rate}%",
+            f"confirm training {best.attr}: early score [{breakdown}] fail={best.fail_rate}%",
         )
 
     def decide_training(self, choices: Iterable[TrainingChoice], state: GameState | None = None) -> Action:
