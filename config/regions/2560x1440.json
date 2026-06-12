@@ -440,8 +440,10 @@
 
     "goal_list_subtitle": [1130, 565, 340, 70],
 
-    "skip_battle_confirm_text": [880, 630, 750, 145],
+    "skip_battle_confirm_text": [880, 620, 760, 360],
+    "skip_battle_confirm_text_v2": [1100, 832, 480, 70],
     "skip_battle_confirm_button": [1290, 900, 340, 80],
+    "skip_battle_confirm_button_v2": [905, 1078, 240, 66],
 
     "event_choice_side_1": [1600, 884, 610, 72],
     "event_choice_side_2": [1600, 977, 610, 72]

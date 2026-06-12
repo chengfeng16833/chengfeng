@@ -92,6 +92,7 @@ from starsavior_trainer.screen_reader import (
     parse_relic_choice,
     parse_rest_submenu,
     parse_shop,
+    parse_skip_battle_confirm,
     parse_support_card_detail,
     parse_support_friend_list,
     parse_support_picker,
@@ -448,15 +449,18 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         priority=16,
         anchor_fn=_has_goal_list_signature, anchor_confidence=1.0,
     ),
-    # 「跳过战斗」二次确认弹窗: 点弹窗内蓝色「跳过战斗」。priority=1 抢在
-    # 蓝键 fallback 之前(弹窗蓝键压在快转设置确认键区域上, 实跑误判教训)。
+    # 「跳过战斗」确认弹窗(双变体): 点弹窗内蓝色「跳过战斗」。payload=按钮
+    # Rect(parse 按文本区分版式); priority=1 抢在蓝键 fallback 之前。
     Screen.SKIP_BATTLE_CONFIRM: DelegatingScreenHandler(
         Screen.SKIP_BATTLE_CONFIRM,
         lambda obs, state, policy: Action(
-            "click", policy.config.skip_battle_confirm_button, "skip-battle confirm dialog, click 跳过战斗",
+            "click",
+            obs.payload if isinstance(obs.payload, Rect) else policy.config.skip_battle_confirm_button,
+            "skip-battle confirm dialog, click 跳过战斗",
         ),
         priority=1,
         anchor_fn=_has_skip_battle_confirm_signature, anchor_confidence=1.0,
+        parse_fn=parse_skip_battle_confirm, ocr_prefixes=["skip_battle_confirm"],
     ),
     # 好友卡流程三画面(标题与旅程起点共用): 好友卡墙(可借用次数)必须排在
     # 支援卡选择(可借用)之前, 否则「可借用次数」也含「可借用」会被截胡。

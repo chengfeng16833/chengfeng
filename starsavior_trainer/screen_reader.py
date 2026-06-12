@@ -689,6 +689,26 @@ def parse_filter_dialog(
     )
 
 
+def parse_skip_battle_confirm(
+    region_texts: Iterable[RegionText],
+    profile: RegionProfile,
+) -> Rect | None:
+    """跳过战斗确认弹窗: 按文本区分变体, 返回对应「跳过战斗」按钮位置。
+
+    v2 基础版(笔记本样式, 是否要进行评鉴战?)按钮在弹窗中下;
+    v1 远征版(确定要跳过…吗)按钮在中部偏右。payload 即按钮 Rect。
+    """
+    texts = {item.name: item.text for item in region_texts}
+    # 大文本区(360px高)超过 payload 读取的 max_area 会被跳过 —— v2 判定用
+    # 专门的小问句区(text_v2), 两区拼接保险。
+    text = texts.get("skip_battle_confirm_text", "") + texts.get("skip_battle_confirm_text_v2", "")
+    if "是否要进行" in text:
+        v2 = profile.regions.get("skip_battle_confirm_button_v2")
+        if v2 is not None:
+            return v2
+    return profile.regions.get("skip_battle_confirm_button")
+
+
 def parse_main_screen(
     region_texts: Iterable[RegionText],
     profile: RegionProfile,

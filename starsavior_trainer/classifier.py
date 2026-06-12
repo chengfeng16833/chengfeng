@@ -762,13 +762,13 @@ def _has_filter_dialog_signature(anchors: dict[str, str]) -> bool:
 
 
 def _has_skip_battle_confirm_signature(anchors: dict[str, str]) -> bool:
-    # 「跳过战斗」二次确认弹窗: 中部问句(确定要跳过评鉴战战斗吗/跳过故事时…)。
-    # 必须含「跳过」+(评鉴战/鉴战/战斗吗/故事)组合, 先于蓝键 fallback 命中,
-    # 否则弹窗内的跳过战斗蓝键会压在快转设置确认键区域上被误判(实跑教训)。
+    # 「跳过战斗」确认弹窗(两个变体, 都会被蓝键 fallback 误判成快转设置):
+    #   v1 远征版: 确定要跳过评鉴战战斗吗/跳过故事时… (跳过+关键词)
+    #   v2 基础版(笔记本样式): 标题 基础评鉴战 + 是否要进行评鉴战? 问句
     text = anchors.get("skip_battle_confirm_text", "")
-    if "跳过" not in text:
-        return False
-    return any(word in text for word in ("评鉴战", "鉴战", "战斗吗", "故事"))
+    if "跳过" in text and any(word in text for word in ("评鉴战", "鉴战", "战斗吗", "故事")):
+        return True
+    return "是否要进行" in text and "鉴战" in text
 
 
 def _has_goal_list_signature(anchors: dict[str, str]) -> bool:
