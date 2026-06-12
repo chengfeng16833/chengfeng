@@ -1239,17 +1239,19 @@ class RoundStrategyTrainingTests(unittest.TestCase):
             early = policy.training_score(choice, GameState(current_round=3))
             self.assertEqual(early - base, 15, choice.name)
 
-    def test_round_12_boundary_is_inclusive(self) -> None:
+    def test_last_early_round_boundary_is_inclusive(self) -> None:
         policy = TrainerPolicy()
         power = TrainingChoice("power", 10, "none", 0, Rect(0, 0, 10, 10))
         base = policy.training_score(power, GameState(current_round=None))
-        self.assertEqual(policy.training_score(power, GameState(current_round=12)) - base, 15)
+        last_early = policy.config.early_game_rounds
+        self.assertEqual(policy.training_score(power, GameState(current_round=last_early)) - base, 15)
 
     def test_no_weight_after_early_window(self) -> None:
         policy = TrainerPolicy()
         power = TrainingChoice("power", 10, "none", 0, Rect(0, 0, 10, 10))
         base = policy.training_score(power, GameState(current_round=None))
-        self.assertEqual(policy.training_score(power, GameState(current_round=13)), base)
+        past_window = policy.config.early_game_rounds + 1
+        self.assertEqual(policy.training_score(power, GameState(current_round=past_window)), base)
 
     def test_non_target_stat_gets_no_early_weight(self) -> None:
         policy = TrainerPolicy()
@@ -1289,12 +1291,14 @@ class RoundStrategyTrainingTests(unittest.TestCase):
     def test_ring_amplification_off_after_early_window(self) -> None:
         policy = TrainerPolicy()
         rainbow = TrainingChoice("guts", 0, "rainbow", 0, Rect(0, 0, 10, 10))
-        self.assertEqual(policy.training_score(rainbow, GameState(current_round=13)), 40)
+        past_window = policy.config.early_game_rounds + 1
+        self.assertEqual(policy.training_score(rainbow, GameState(current_round=past_window)), 40)
 
-    def test_ring_amplification_boundary_round_12_inclusive(self) -> None:
+    def test_ring_amplification_last_early_round_inclusive(self) -> None:
         policy = TrainerPolicy()
         gold = TrainingChoice("guts", 0, "gold", 0, Rect(0, 0, 10, 10))
-        self.assertEqual(policy.training_score(gold, GameState(current_round=12)), 62.5)
+        last_early = policy.config.early_game_rounds
+        self.assertEqual(policy.training_score(gold, GameState(current_round=last_early)), 62.5)
 
     def test_no_ring_means_no_amplification(self) -> None:
         policy = TrainerPolicy()

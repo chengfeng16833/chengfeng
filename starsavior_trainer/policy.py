@@ -220,10 +220,11 @@ class PolicyConfig:
             "protection_focus": {"guts": 16, "stamina": 10},
         }
     )
-    # Early-game (前12回合) bias: inside this round window, 力量(power)/生命(stamina)
-    # get an extra score weight so the bot front-loads them. Added on top of the
-    # profile bias (加权打分) — not a hard override, still compared against the rest.
-    early_game_rounds: int = 12
+    # Early-game (前16回合, 2026-06-12 实跑后用户定) bias: inside this round window,
+    # 力量(power)/生命(stamina) get an extra score weight so the bot front-loads them.
+    # Added on top of the profile bias (加权打分) — not a hard override. 同一窗口也是
+    # decide_training_quantified 的跑好感期(5训练全检视, 人头最多者胜)。
+    early_game_rounds: int = 16
     early_game_stat_weight: dict[str, int] = field(
         default_factory=lambda: {"power": 15, "stamina": 15}
     )
@@ -565,19 +566,23 @@ class TrainerPolicy:
         return primary if primary != "guts" else "power"
 
     def early_training_score(self, choice: TrainingChoice, primary: str) -> int:
-        """前期(≤12回合)量化分: 跑好感为主。
+        """前期(≤16回合)量化分: 跑好感为主。
 
-        前期属性收益低、彩圈基本不出(好感没满) → 人头就是价值:
-        人头x50(1个也算) + 主属性底分10/韧性5; 非候选属性 0 分(不参与);
+        (2026-06-12 实跑后用户改拍板: 支援卡随机落在 5 个训练里 → 5 个全参与,
+        人头最多者胜, 不再限定候选属性。)
+        人头x50(1个也算) + 底分(主属性10/韧性5/其他0, 兼平手偏好);
         彩圈万一出现按 ring_bonus(≤40)作平手加分, 不会压过 1 个人头。
         """
-        if choice.attr != primary and choice.attr != "guts":
-            return 0
-        base = self.EARLY_PRIMARY_BASE if choice.attr == primary else self.EARLY_GUTS_BASE
+        if choice.attr == primary:
+            base = self.EARLY_PRIMARY_BASE
+        elif choice.attr == "guts":
+            base = self.EARLY_GUTS_BASE
+        else:
+            base = 0
         return base + choice.icon_count * self.EARLY_ICON_WEIGHT + self.config.ring_bonus.get(choice.ring, 0)
 
     def late_training_score(self, choice: TrainingChoice, primary: str) -> int:
-        """后期(>12回合)量化分: 收获彩圈。
+        """后期(>16回合)量化分: 收获彩圈。
 
         主属性彩圈+10000 > 韧性彩圈+5000 > 人头≥4(好感没跑满的尾巴)x50
         > 主属性底分10/韧性5。层级永不交叉; 非主非韧的彩圈不享受彩圈层。
@@ -600,14 +605,17 @@ class TrainerPolicy:
     def decide_training_quantified(
         self, choices: Iterable[TrainingChoice], state: GameState
     ) -> Action | None:
-        """量化训练策略(2026-06-12 用户拍板): 按回合分段。
+        """量化训练策略(2026-06-12 用户拍板, 同日实跑后修订): 按回合分段。
 
-        ≤12回合 = 跑好感(early_training_score); >12回合 = 收彩圈
-        (late_training_score)。两步: 目标卡未选中 → 点卡; 选中后失败率
-        超阈值换次高分; 全被排除 → 返回 None 交回老逻辑(会去休息)。
+        ≤early_game_rounds(16)回合 = 跑好感(early_training_score, 5 训练全检视);
+        >16回合 = 收彩圈(late_training_score)。两步: 目标卡未选中 → 点卡;
+        选中后失败率超阈值换次高分; 全被排除 → 返回 None 交回老逻辑(会去休息)。
         """
         primary = self._early_primary(state.build_profile)
-        early = state.current_round is None or state.current_round <= 12
+        early = (
+            state.current_round is None
+            or state.current_round <= self.config.early_game_rounds
+        )
         score_fn = self.early_training_score if early else self.late_training_score
         phase = "early" if early else "late"
         pool = list(choices)
@@ -626,12 +634,17 @@ class TrainerPolicy:
                 )
             return Action("pause", None, f"{phase}: fail={known_fail}% universal, need rest")
         # 人头列只显示选中卡 → 把本帧选中卡的读数记进本回合 seen, 决策用 seen
-        # (没读过的按 0)。前期还要轮询: 候选(主属性/韧性)没读全就逐个点过去。
+        # (没读过的按 0)。前期轮询全部 5 个训练(2026-06-12 实跑后用户改拍板:
+        # 支援卡随机分布, 只看主属性/韧性会漏掉别处扎堆的人头), 主属性/韧性先看。
         for c in pool:
             if c.icon_count >= 0:
                 self._early_icons_seen[c.attr] = c.icon_count
         if early:
-            for attr in (primary, "guts"):
+            inspect_order = [primary, "guts"] + [
+                a for a in ("power", "stamina", "guts", "wisdom", "speed")
+                if a != primary and a != "guts"
+            ]
+            for attr in inspect_order:
                 if attr in self._early_icons_seen:
                     continue
                 card = next((c for c in pool if c.attr == attr), None)

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""量化训练策略(2026-06-12 用户三次拍板的最终版): 按回合分段。
+"""量化训练策略(2026-06-12 用户拍板, 同日实跑后修订): 按回合分段。
 
-≤12回合(跑好感期): 前期属性收益低、彩圈基本不出 → 候选只有 主属性/韧性,
-人头最多者胜(1个也算), 平手主属性优先, 没人头主属性保底。
->12回合(收获期): 好感跑满开始出彩圈 → 主属性彩圈 > 韧性彩圈 >
+≤16回合(跑好感期): 支援卡随机分布在 5 个训练 → 5 个全检视全参与,
+人头最多者胜(1个也算), 平手 主属性>韧性>其他, 没人头主属性保底。
+>16回合(收获期): 好感跑满开始出彩圈 → 主属性彩圈 > 韧性彩圈 >
 人头≥4(没跑满的尾巴) > 主属性保底; 非主非韧的彩圈不跳队。
 """
 
@@ -70,14 +70,14 @@ class IconPollingTest(unittest.TestCase):
 
 
 class EarlyPhaseTest(unittest.TestCase):
-    """≤12回合: 跑好感, 候选只有主属性/韧性, 人头最多者胜。"""
+    """≤16回合: 跑好感, 5 训练全参与, 人头最多者胜。"""
 
-    def test_most_icons_wins_within_candidates(self) -> None:
+    def test_most_icons_wins_across_all_five(self) -> None:
         policy = TrainerPolicy()
         choices = [_choice("power", 1), _choice("stamina", 8), _choice("guts", 3)]
         action = policy.decide_training_quantified(choices, _early_state())
-        # 体力人头再多也不练(前期非候选属性0分); 韧性3 > 力量1。
-        self.assertEqual(action.target, _choice("guts").target)
+        # 实跑后改拍板: 人头最多者胜, 不限属性 —— 体力8人头 > 韧性3 > 力量1。
+        self.assertEqual(action.target, _choice("stamina").target)
 
     def test_one_icon_already_counts_in_early(self) -> None:
         # 前期 1 个人头也值得跟(跑好感是主任务, 没有≥4门槛)。
@@ -105,12 +105,12 @@ class EarlyPhaseTest(unittest.TestCase):
         action = policy.decide_training_quantified(choices, GameState(build_profile="power_focus"))
         self.assertEqual(action.target, _choice("guts").target)
 
-    def test_stamina_build_candidates(self) -> None:
+    def test_stamina_build_follows_icons_too(self) -> None:
         policy = TrainerPolicy()
         choices = [_choice("power", 8), _choice("stamina", 1), _choice("guts", 0)]
         action = policy.decide_training_quantified(choices, _early_state("stamina_tank"))
-        # 体力角色: 力量人头再多不练; 体力1个人头就跟。
-        self.assertEqual(action.target, _choice("stamina").target)
+        # 好感是全局资源: 体力角色见力量8人头也跟着跑(8x50 > 1x50+主属性底分10)。
+        self.assertEqual(action.target, _choice("power").target)
 
 
 class LatePhaseTest(unittest.TestCase):
@@ -182,7 +182,8 @@ class ScoreFormulaTest(unittest.TestCase):
         policy = TrainerPolicy()
         self.assertEqual(policy.early_training_score(_choice("power", 2), "power"), 10 + 100)
         self.assertEqual(policy.early_training_score(_choice("guts", 1), "power"), 5 + 50)
-        self.assertEqual(policy.early_training_score(_choice("stamina", 8), "power"), 0)
+        # 非主非韧: 没底分但人头照算(实跑后改拍板, 5 训练全参与)。
+        self.assertEqual(policy.early_training_score(_choice("stamina", 8), "power"), 400)
         # 前期万一出彩圈: ring_bonus(≤40)只作平手加分, 压不过 1 个人头(50)。
         self.assertEqual(policy.early_training_score(_choice("power", 0, ring="rainbow"), "power"), 50)
 
