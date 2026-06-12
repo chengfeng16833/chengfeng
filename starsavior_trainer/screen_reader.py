@@ -699,9 +699,17 @@ def parse_skip_battle_confirm(
     v1 远征版(确定要跳过…吗)按钮在中部偏右。payload 即按钮 Rect。
     """
     texts = {item.name: item.text for item in region_texts}
-    # 大文本区(360px高)超过 payload 读取的 max_area 会被跳过 —— v2 判定用
-    # 专门的小问句区(text_v2), 两区拼接保险。
-    text = texts.get("skip_battle_confirm_text", "") + texts.get("skip_battle_confirm_text_v2", "")
+    # 大文本区(360px高)超过 payload 读取的 max_area 会被跳过 —— 变体判定用
+    # 专门的小问句区(text_v2/v3), 拼接保险。
+    text = (
+        texts.get("skip_battle_confirm_text", "")
+        + texts.get("skip_battle_confirm_text_v2", "")
+        + texts.get("skip_battle_confirm_text_v3", "")
+    )
+    if "放弃" in text:
+        v3 = profile.regions.get("skip_battle_confirm_button_v3")
+        if v3 is not None:
+            return v3  # 放弃战斗确认(红色确认)
     if "是否要进行" in text:
         v2 = profile.regions.get("skip_battle_confirm_button_v2")
         if v2 is not None:

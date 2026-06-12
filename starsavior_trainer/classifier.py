@@ -772,7 +772,10 @@ def _has_skip_battle_confirm_signature(anchors: dict[str, str]) -> bool:
     text = anchors.get("skip_battle_confirm_text", "")
     if "跳过" in text and any(word in text for word in ("评鉴战", "鉴战", "战斗吗", "故事")):
         return True
-    return "是否要进行" in text and "鉴战" in text
+    if "是否要进行" in text and "鉴战" in text:
+        return True
+    # v3 放弃战斗确认(FAIL 结算页点确认后弹出): 确定要放弃战斗吗?
+    return "放弃战斗" in text
 
 
 def _has_battle_result_signature(anchors: dict[str, str]) -> bool:
