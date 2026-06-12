@@ -489,7 +489,13 @@ def main() -> None:
                 observation = Observation(screen=last_screen, confidence=last_screen_confidence)
                 print("  (frame unchanged, classification reused)")
             elif args.hybrid_mode:
-                observation = classify_hybrid(screenshot, profile, ocr)
+                # 两级分类: 信空快引擎初筛(classify_ocr), 拿不准(UNKNOWN)时用
+                # 标准引擎(含 Paddle 回退)复核这一帧。实测: WinRT 在训练大厅丢字
+                # → unknown 0.60, Paddle 同帧 training_hub 0.83 —— 只让边缘帧付
+                # 慢引擎成本; 认出后续静止帧走帧哈希复用, 0 成本。
+                observation = classify_hybrid(screenshot, profile, classify_ocr)
+                if observation.screen == Screen.UNKNOWN and classify_ocr is not ocr:
+                    observation = classify_hybrid(screenshot, profile, ocr)
             elif args.blue_mode:
                 observation = classify_by_blue_button(screenshot, profile)
             elif args.use_paddle:
@@ -500,7 +506,9 @@ def main() -> None:
                 # the bot treat the blessing-setup screen as character select and
                 # scroll forever looking for the runner (the "stuck on blessing"
                 # freeze). Hybrid disambiguates them by visual content.
-                observation = classify_hybrid(screenshot, profile, ocr)
+                observation = classify_hybrid(screenshot, profile, classify_ocr)
+                if observation.screen == Screen.UNKNOWN and classify_ocr is not ocr:
+                    observation = classify_hybrid(screenshot, profile, ocr)
             else:
                 observation = classify_by_ocr(screenshot, profile, ocr)
             timer.record("classify", time.perf_counter() - _t0)
