@@ -17,6 +17,7 @@ REFACTOR.md "待物理搬迁".
 from __future__ import annotations
 
 from starsavior_trainer.classifier import (
+    _has_battle_result_signature,
     _has_battle_signature,
     _has_commission_select_signature,
     _has_dialogue_signature,
@@ -461,6 +462,16 @@ HANDLERS: dict[Screen, DelegatingScreenHandler] = {
         priority=1,
         anchor_fn=_has_skip_battle_confirm_signature, anchor_confidence=1.0,
         parse_fn=parse_skip_battle_confirm, ocr_prefixes=["skip_battle_confirm"],
+    ),
+    # 评鉴战结算页: 点「确认」接受结果继续(落败不重打 — 重新挑战费票且
+    # 等级差摆在那)。priority=1 抢在训练大厅等误判之前。
+    Screen.BATTLE_RESULT: DelegatingScreenHandler(
+        Screen.BATTLE_RESULT,
+        lambda obs, state, policy: Action(
+            "click", policy.config.battle_result_confirm_button, "battle result, click 确认 to continue",
+        ),
+        priority=1,
+        anchor_fn=_has_battle_result_signature, anchor_confidence=1.0,
     ),
     # 好友卡流程三画面(标题与旅程起点共用): 好友卡墙(可借用次数)必须排在
     # 支援卡选择(可借用)之前, 否则「可借用次数」也含「可借用」会被截胡。

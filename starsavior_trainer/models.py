@@ -52,6 +52,9 @@ class Screen(str, Enum):
     # 远征评鉴战的这个弹窗布局与基础评鉴战不同, 老 battle 锚读不到, 蓝键
     # fallback 又把它误判成快转设置 → 解析不出选项 pause 死循环(实跑卡死点2)。
     SKIP_BATTLE_CONFIRM = "skip_battle_confirm"
+    # 评鉴战结算页(FAIL/胜利: 很可惜,落败了… + 重新挑战/确认)。落败时点确认
+    # 接受继续(不重打); 误判成训练大厅点空白会无限循环(实跑卡死点9)。
+    BATTLE_RESULT = "battle_result"
     # The in-game 菜单 popup (指南/选项/编制信息/观测信息/重新观测/储存后前往大厅 +
     # an ✕ close). Reached by an accidental mis-click on the top-right menu button.
     # Dangerous to leave: its centre holds 重新观测/观测结束, which would restart or

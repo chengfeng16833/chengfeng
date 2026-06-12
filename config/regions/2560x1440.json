@@ -446,6 +446,10 @@
     "skip_battle_confirm_button_v2": [880, 1032, 350, 60],
 
     "event_choice_side_1": [1600, 884, 610, 72],
-    "event_choice_side_2": [1600, 977, 610, 72]
+    "event_choice_side_2": [1600, 977, 610, 72],
+
+    "battle_result_text": [1010, 1050, 540, 70],
+    "battle_result_buttons": [840, 1240, 820, 90],
+    "battle_result_confirm_button": [1270, 1245, 390, 80]
   }
 }

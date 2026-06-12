@@ -75,6 +75,9 @@ _FAST_ANCHORS: tuple[str, ...] = (
     # 阶段读不到刷新 → 误判训练反复点卡(实跑教训, cdf62a2 的回归变体)。
     "shop_refresh_button",
     "shop_buy_button",
+    # 评鉴战结算页(落败/重新挑战; 不识别会被误判训练大厅点空白死循环)。
+    "battle_result_text",
+    "battle_result_buttons",
 )
 
 
@@ -397,6 +400,7 @@ ANCHOR_REGIONS_BY_SCREEN: dict[Screen, list[str]] = {
     Screen.SUPPORT_CARD_DETAIL: ["support_card_detail_anchor"],
     Screen.GOAL_LIST: ["goal_list_subtitle"],
     Screen.SKIP_BATTLE_CONFIRM: ["skip_battle_confirm_text"],
+    Screen.BATTLE_RESULT: ["battle_result_text", "battle_result_buttons"],
     Screen.INITIAL: ["route_select_anchor_title", "route_select_route_title", "start_button"],
     Screen.CHARACTER_SELECT: ["character_select_anchor_title"],
     Screen.BLESSING_SETUP: ["blessing_setup_anchor_title"],
@@ -769,6 +773,15 @@ def _has_skip_battle_confirm_signature(anchors: dict[str, str]) -> bool:
     if "跳过" in text and any(word in text for word in ("评鉴战", "鉴战", "战斗吗", "故事")):
         return True
     return "是否要进行" in text and "鉴战" in text
+
+
+def _has_battle_result_signature(anchors: dict[str, str]) -> bool:
+    # 评鉴战结算页: 中部结果文案(很可惜/落败/获胜/恭喜) 或 按钮行出现「重新挑战」。
+    text = anchors.get("battle_result_text", "")
+    buttons = anchors.get("battle_result_buttons", "")
+    if contains_any_text(text, ("落败", "很可惜", "获胜", "恭喜")):
+        return True
+    return "重新挑战" in buttons
 
 
 def _has_goal_list_signature(anchors: dict[str, str]) -> bool:

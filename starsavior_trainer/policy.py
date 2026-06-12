@@ -276,6 +276,8 @@ class PolicyConfig:
     game_menu_close_button: Rect = Rect(1808, 535, 64, 60)
     # 「跳过战斗」二次确认弹窗内的蓝色 跳过战斗 按钮(实机帧校准)。
     skip_battle_confirm_button: Rect = Rect(1290, 900, 340, 80)
+    # 评鉴战结算页(FAIL/胜利)右下「确认」按钮(实机帧校准)。
+    battle_result_confirm_button: Rect = Rect(1270, 1245, 390, 80)
     # 「选择旅程」画面右下角的三个难度按钮(与 regions JSON 的
     # route_select_difficulty_* 同值)。赛前配置了难度时先点它再点开始。
     difficulty_buttons: dict[str, Rect] = field(
