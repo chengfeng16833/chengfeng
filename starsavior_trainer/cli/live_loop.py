@@ -261,6 +261,28 @@ def _archive_fingerprint_sample(
         save_image(screenshot, path)
     except Exception:
         logger.debug("指纹样本归档失败: %s", path, exc_info=True)
+
+
+def _collect_flow_frame(
+    screenshot: Image.Image, seq: int, from_screen: str, to_screen: str, confidence: float
+) -> None:
+    """流程采集(--collect): 存一张代表帧 + 追加一行转移记录, 攒真实完整流程图。
+
+    与 _archive_fingerprint_sample 相反: 这里专收"第一次见的画面/转移/未知画面"
+    (含 unknown 盲区), 用来发现 bot 还没认识的画面和真实流程走向。
+    """
+    import json as _json
+
+    out_dir = Path("screenshots/flow_collect")
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        tag = f"{seq:03d}_{from_screen}__to__{to_screen}".replace("->", "_")
+        save_image(screenshot, out_dir / f"{tag}.png")
+        rec = {"seq": seq, "from": from_screen, "to": to_screen, "confidence": round(confidence, 2)}
+        with open("logs/flow_map.jsonl", "a", encoding="utf-8") as f:
+            f.write(_json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        logger.debug("流程采集存档失败", exc_info=True)
         return
     _fp_sample_counts[screen_name] = count + 1
     print(f"  (指纹样本归档 {path.name} — 重跑 tools/_mine_fingerprints.py 可吃进)")
@@ -446,6 +468,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="OCR 引擎: paddle(默认) / hybrid(WinRT快路径+Paddle精读回退, 提速) / noop。",
     )
     parser.add_argument(
+        "--collect",
+        action="store_true",
+        help="流程采集模式: 每遇新画面/新转移/新未知画面自动截图(screenshots/flow_collect/)"
+        "+记转移序列(logs/flow_map.jsonl), 不影响正常决策。用于攒真实完整流程图(含 bot 还没认识的盲区画面)。",
+    )
+    parser.add_argument(
         "--polite-idle",
         type=float,
         default=0,
@@ -601,6 +629,12 @@ def main() -> None:
     # → 暂停, 等用户空闲 polite_idle 秒再继续。
     bot_last_input_tick = _last_input_tick() if args.polite_idle > 0 else 0
     polite_paused_printed = False
+    # 流程采集(--collect): 记录已见画面/转移/未知帧指纹, 只对"第一次见"的存档。
+    collect_screens: set[str] = set()
+    collect_transitions: set[str] = set()
+    collect_unknown_sigs: list[bytes] = []
+    collect_seq = 0
+    prev_collect_screen = "start"
     try:
         while args.max_iterations == 0 or iteration < args.max_iterations:
             # Mouse-corner emergency stop, checked FIRST every iteration. The most
@@ -724,6 +758,28 @@ def main() -> None:
 
             logger.info(f"classified screen={observation.screen.value} confidence={observation.confidence:.2f}")
             _archive_fingerprint_sample(screenshot, observation, frame_unchanged)
+
+            # 流程采集: 第一次见的画面/转移/未知帧 → 截图+记转移(攒真实流程图)。
+            # 放在分类后、所有分支前, 覆盖含 unknown 在内的每一种画面(盲区)。
+            if args.collect:
+                cur = observation.screen.value
+                trans = f"{prev_collect_screen}->{cur}"
+                is_new = False
+                if observation.screen == Screen.UNKNOWN:
+                    if not any(_frames_similar(frame_sig, s) for s in collect_unknown_sigs):
+                        collect_unknown_sigs.append(frame_sig)
+                        is_new = True
+                elif cur not in collect_screens:
+                    collect_screens.add(cur)
+                    is_new = True
+                if trans not in collect_transitions:
+                    collect_transitions.add(trans)
+                    is_new = True
+                if is_new:
+                    collect_seq += 1
+                    _collect_flow_frame(screenshot, collect_seq, prev_collect_screen, cur, observation.confidence)
+                    print(f"  [采集] #{collect_seq} {trans} conf={observation.confidence:.2f}")
+                prev_collect_screen = cur
             if observation.screen in (Screen.CHARACTER_SELECT, Screen.BLESSING_SETUP):
                 character_score, blessing_score = journey_origin_visual_scores(screenshot, profile)
                 visual_screen = classify_journey_origin_by_visual(screenshot, profile)
