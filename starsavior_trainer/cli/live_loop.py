@@ -261,6 +261,8 @@ def _archive_fingerprint_sample(
         save_image(screenshot, path)
     except Exception:
         logger.debug("指纹样本归档失败: %s", path, exc_info=True)
+    _fp_sample_counts[screen_name] = count + 1
+    print(f"  (指纹样本归档 {path.name} — 重跑 tools/_mine_fingerprints.py 可吃进)")
 
 
 def _collect_flow_frame(
@@ -283,9 +285,6 @@ def _collect_flow_frame(
             f.write(_json.dumps(rec, ensure_ascii=False) + "\n")
     except Exception:
         logger.debug("流程采集存档失败", exc_info=True)
-        return
-    _fp_sample_counts[screen_name] = count + 1
-    print(f"  (指纹样本归档 {path.name} — 重跑 tools/_mine_fingerprints.py 可吃进)")
 
 
 _ADVANCE_SLEEP = 0.35
