@@ -905,18 +905,25 @@ class TrainerPolicy:
         return action
 
     def _combo_relic_pick(self, options: Iterable[RelicOption], state: GameState | None) -> RelicOption | None:
-        """组合圣遗物(全部 is_team 且带 attribute)→ 按 build 属性优先级选;否则 None(回落到 decide_relic 按分数)."""
+        """组合圣遗物(is_team「队员全体」且带 attribute)→ 按 build 属性优先级选。
+
+        2026-06-14 放宽: 原条件 `len(team) < len(opts)` 要求三张**全部**是组合,
+        太苛刻 —— 只要一张 OCR 没读出部位属性、或画面是混合(组合+普通)就全盘
+        回退按分数, 导致组合圣遗物被当普通选错(实跑日志: 圣遗物全走 highest
+        score, 组合逻辑从没触发)。改为: 只要**有**组合选项, 就在组合选项里按
+        build 属性优先级选; 一张都没有才回退分数。
+        """
         opts = list(options)
         team = [o for o in opts if o.is_team and o.attribute]
-        if not team or len(team) < len(opts):
-            return None
+        if not team:
+            return None  # 没有「队员全体」组合选项 → 回退 decide_relic 按分数
         profile = state.build_profile if state else "balanced"
         priority = self.config.relic_attribute_priority_by_profile.get(profile, ())
         for attr in priority:
             for option in team:
                 if option.attribute == attr:
                     return option
-        return team[0]  # 优先级里都没出现 → 随便选第一张
+        return team[0]  # build 优先级里都没出现的属性 → 取第一张组合
 
     def decide_commission(self, choice: CommissionChoice, state: GameState) -> Action:
         # The red 受理讨伐委托 banner on the training hub is the gate that sends us

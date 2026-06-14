@@ -792,41 +792,22 @@ def main() -> None:
                 unknown_path = Path("screenshots/live_unknown_latest.png")
                 save_image(screenshot, unknown_path)
                 consecutive_unknown += 1
-                # 2026-06-12 提速(用户反馈: 剧情/展示页 bot 干等游戏自动跳过):
-                # unknown 大多是转场/CG/展示页, 推进点几乎都在「底部中央」
-                # (点击以继续 祖传位置: 获得奖励/目标列表/评鉴战结果同位),
-                # 屏幕正中常是无效文字区 —— 底部为主, 每 3 次插一次中心兜底。
-                # 上限 40(原 4 次太怂, 目标列表那类页面 4 次点不中就干等);
-                # 真新画面卡死由监控的连续 unknown 告警兜底, 不靠这里放弃。
+                # 2026-06-14 用户拍板修"转大厅疯狂点中心误触":
+                # unknown 只点「底部中央」继续位(各推进页通用「点击以继续」祖传位),
+                # **永不点屏幕中心** — 中心是角色立绘/危险区, 点了会误触菜单
+                # (flow_map seq52 dialogue→game_menu 为证)。且**每帧只点 1 下、
+                # 不盲点 burst**(用户: 鼠标多点极易触发其他界面), 靠 _ADVANCE_SLEEP
+                # 快速回主循环重识别。剧情/奖励有各自的慢连点通道, 不靠这里。
+                # 上限 40; 真新画面卡死由监控的连续 unknown 告警兜底。
                 if args.execute and consecutive_unknown <= 40:
                     activate_window(client_window.hwnd)
-                    if consecutive_unknown % 3 == 0:
-                        cx = client_window.rect.x + client_window.rect.width // 2
-                        cy = client_window.rect.y + client_window.rect.height // 2
-                        spot = "centre"
-                    else:
-                        cx = client_window.rect.x + client_window.rect.width // 2
-                        cy = client_window.rect.y + int(client_window.rect.height * 0.88)
-                        spot = "bottom"
-                    advance_action = Action("click", Rect(cx, cy, 1, 1), f"unknown: click {spot} to advance", repeat=2)
+                    cx = client_window.rect.x + client_window.rect.width // 2
+                    cy = client_window.rect.y + int(client_window.rect.height * 0.88)
+                    advance_action = Action("click", Rect(cx, cy, 1, 1), "unknown: tap bottom-centre once", repeat=1)
                     executor.execute(advance_action)
-                    print(f"  unknown screen, click {spot} to advance ({consecutive_unknown})")
+                    print(f"  unknown screen, tap bottom-centre once ({consecutive_unknown})")
                     timer.frame_done()
-                    # 盲点 burst(固定推进位): 转场期不每帧全识别, 连点+哈希
-                    # 盯梢, 画面剧变(新画面出现)才回主循环识别一次。
-                    unknown_sig = _frame_signature(screenshot)
-                    for burst_i in range(12):
-                        time.sleep(0.15)
-                        executor.execute(advance_action)
-                        if burst_i % 3 == 2:
-                            try:
-                                quick_shot, _ = capture_window(args.window_title)
-                            except Exception:
-                                continue
-                            qsig = _frame_signature(quick_shot)
-                            diff = sum(1 for a, b in zip(qsig, unknown_sig) if abs(a - b) > 10) / len(qsig)
-                            if diff > 0.08:
-                                break
+                    time.sleep(_ADVANCE_SLEEP)
                 else:
                     print(f"  unknown screen, pausing (consecutive={consecutive_unknown})")
                     timer.frame_done()
@@ -855,6 +836,17 @@ def main() -> None:
                             for option in payload.options
                         )
                         + f" detail_sub={payload.detail_sub_blessing_count}"
+                    )
+                # 圣遗物诊断(2026-06-14): 打印每张 is_team/attribute/score, 下次遇到
+                # 组合圣遗物("队员全体")时能从日志确诊识别对没 — team=True 才会走
+                # 按 build 属性优先级选, 否则当普通按分数。
+                if isinstance(payload, RelicChoice):
+                    print(
+                        "  relic_options="
+                        + ", ".join(
+                            f"{o.name}:team={o.is_team}:attr={o.attribute}:score={o.score}"
+                            for o in payload.options
+                        )
                     )
             elif args.verbose:
                 print("  (no payload parsed)")
