@@ -9,7 +9,8 @@ class LiveLoopArgsTests(unittest.TestCase):
 
         config = prejourney_config_from_args(args)
 
-        self.assertEqual("default", config.difficulty)
+        # 2026-06-14 用户锁死: 默认难度=困难(只跑困难, 不去其他难度)。
+        self.assertEqual("困难", config.difficulty)
         self.assertEqual("", config.character_name)
         self.assertEqual("", config.profession)
         self.assertEqual(1, config.imprint_slot_1_index)

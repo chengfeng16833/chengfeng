@@ -110,13 +110,15 @@ logger = get_logger("live_loop")
 # blindly into the screen that comes next.
 _ADVANCE_SCREENS = frozenset({Screen.DIALOGUE, Screen.POST_TRAINING, Screen.REWARD, Screen.GOAL_LIST})
 
-# 点固定位即推进的画面(用户洞察 2026-06-14: skip/确认/推进按钮位置全固定,
-# 识别一次后盲点该固定位 → 画面一变就停, 不必每帧重新识别整屏)。burst 异动
-# 即停 = 点击数最小 + 推进最快。严格白名单: 只含"点单一固定按钮就推进、不读
-# 内容选择"的画面; training_hub(委托/休息分支)与一切要读内容决策的画面
-# (training_select/event/relic/shop/commission/blessing/filter)绝不在内。
-_BURST_SCREENS = frozenset({
+# 推进画面分两类(用户 2026-06-14 拍板):
+# ① 剧情/展示类: 会连续出现多页(对话框/奖励页), 用 0.5s 间隔慢速连点固定
+#    skip/继续位, 连续跳过多页, 直到结构剧变/按钮消失才停。
+_STORY_ADVANCE_SCREENS = frozenset({
     Screen.DIALOGUE, Screen.POST_TRAINING, Screen.REWARD, Screen.GOAL_LIST,
+})
+# ② 确认/推进类: 点单一固定按钮即切到不同画面 → 精准单点(点1次→验是否切→
+#    没切才补点, 最多3次), 绝不在切换瞬间盲点连发(用户: 多点极易误触下个界面)。
+_CONFIRM_TAP_SCREENS = frozenset({
     Screen.BATTLE_RESULT, Screen.NEW_BLESSING, Screen.FINAL_RESULT,
     Screen.JOURNEY_END, Screen.GAME_MENU, Screen.CONFIRM_DIALOG,
     Screen.SKIP_BATTLE_CONFIRM, Screen.MAIN_SCREEN, Screen.MAIN_MENU_PANEL,
@@ -406,7 +408,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Build profile: balanced, power_focus, focus_focus, durability_focus, stamina_tank, protection_focus. "
         "不传时按 --character 查角色名册(config/characters.json)自动定走线; 名册没有则 balanced。",
     )
-    parser.add_argument("--difficulty", default="default", help="Journey difficulty selection for pre-journey setup.")
+    parser.add_argument(
+        "--difficulty", default="困难",
+        help="赛前难度, 默认困难(用户 2026-06-14 锁死: 只跑困难, 不去其他难度)。",
+    )
     parser.add_argument("--profession", default="", help="Character profession filter for pre-journey setup.")
     parser.add_argument(
         "--imprint-slot-1-index",
@@ -979,40 +984,61 @@ def main() -> None:
             #   1) 目标点取色 — burst 前记下点位颜色, 按钮消失/挪位/被菜单面板
             #      盖住时该点颜色必变, 点位级灵敏, 先于整屏判据止手;
             #   2) 整屏哈希 >8% — 新画面/选项出现的兜底(原判据保留)。
+            # ① 剧情/展示类: 0.5s 间隔慢速连点固定 skip/继续位(剧情优先 skip —
+            # dialogue.skip_button 已 parse 出 intro/journey 各自的 skip), 连续
+            # 跳过多页对话框/奖励页; 按钮消失(取色变)或结构剧变就停。
             if (
-                observation.screen in _BURST_SCREENS
-                and args.execute
-                and action.kind == "click"
-                and result.executed
+                observation.screen in _STORY_ADVANCE_SCREENS
+                and args.execute and action.kind == "click" and result.executed
             ):
-                # burst 内单点(repeat=1): 原来复用 repeat=3 的 screen_action →
-                # 每轮点 3 下 ×14 轮 = 最多 42 下纯浪费; burst 本身就是连点机制,
-                # 单点足矣(用户 2026-06-14: 减少点击次数)。"点单按钮即推进"的
-                # 画面(确认/菜单/主界面)第一轮抓帧就检测到切换 → 只点 1 次即退。
-                burst_action = replace(screen_action, repeat=1)
-                burst_base_color = (
-                    _point_color(screenshot, client_window, result.point)
-                    if result.point is not None
-                    else None
+                tap = replace(screen_action, repeat=1)
+                base_color = (
+                    _point_color(screenshot, client_window, result.point) if result.point is not None else None
                 )
-                for burst_i in range(14):
-                    time.sleep(0.12)
-                    # 每轮点击前都验一次(抓帧仅 ~0.04s): 先验后点, 异动这轮就不点。
+                for _ in range(12):
+                    time.sleep(0.5)  # 用户指定: 剧情间隔 0.5s 才能逐页跳过
                     try:
-                        quick_shot, _ = capture_window(args.window_title)
+                        quick_shot, _qw = capture_window(args.window_title)
                     except Exception:
                         quick_shot = None
                     if quick_shot is not None:
                         if result.point is not None and not _colors_close(
-                            _point_color(quick_shot, client_window, result.point), burst_base_color
+                            _point_color(quick_shot, client_window, result.point), base_color
                         ):
-                            print("  burst 止手: 目标点颜色变了(按钮消失/挪位), 回主循环重新认画面")
+                            print("  剧情连点止手: skip/继续 按钮消失, 回主循环重认")
                             break
                         qsig = _frame_signature(quick_shot)
                         diff = sum(1 for a, b in zip(qsig, frame_sig) if abs(a - b) > 10) / len(qsig)
                         if diff > 0.08:
                             break
-                    executor.execute(burst_action)
+                    executor.execute(tap)
+                continue
+
+            # ② 确认/推进类: 精准单点防误触。execute 段已点 1 次, 这里只验画面是否
+            # 切换 — 切了(取色变/结构变)立即收手, 没切才补点(最多 2 次)。绝不在
+            # 切换瞬间盲点连发(用户: 鼠标多点极易触发下一个界面)。
+            if (
+                observation.screen in _CONFIRM_TAP_SCREENS
+                and args.execute and action.kind == "click" and result.executed
+            ):
+                tap = replace(screen_action, repeat=1)
+                base_color = (
+                    _point_color(screenshot, client_window, result.point) if result.point is not None else None
+                )
+                for _ in range(2):
+                    time.sleep(0.35)
+                    try:
+                        quick_shot, _qw = capture_window(args.window_title)
+                    except Exception:
+                        break
+                    changed_color = result.point is not None and not _colors_close(
+                        _point_color(quick_shot, client_window, result.point), base_color
+                    )
+                    qsig = _frame_signature(quick_shot)
+                    diff = sum(1 for a, b in zip(qsig, frame_sig) if abs(a - b) > 10) / len(qsig)
+                    if changed_color or diff > 0.05:
+                        break  # 已切换 → 精准收手, 不补点
+                    executor.execute(tap)  # 没切 → 补点 1 次
                 continue
 
             # Advance screens (reward / dialogue / post-training) re-capture fast so
