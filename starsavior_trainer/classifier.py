@@ -58,6 +58,9 @@ _FAST_ANCHORS: tuple[str, ...] = (
     "commission_select_anchor_title",
     "skill_select_title",
     "post_training_title",
+    # 训练失败页只在 success_text 区域显示"训练失败!"(title 区是卡片名), 必须
+    # 进快通道, 否则训练失败页快通道认不出 → 落全扫被误判快转设定(采集发现)。
+    "post_training_success_text",
     "dialogue_journey_title",
     # Story-intro cutscene has a top-right "SKIP" button (OCR-readable text, unlike
     # the journey dialogue's >> icon). Reading it in the fast pass lets the dialogue
@@ -652,7 +655,10 @@ def _has_post_training_signature(anchors: dict[str, str]) -> bool:
             "post_training_success_text",
         )
     )
-    return contains_any_text(post_text, ("\u8bad\u7ec3\u6210\u529f", "\u529b\u91cf\u8bad\u7ec3", "\u4f53\u529b\u8bad\u7ec3", "\u63d0\u5347"))
+    # \u8bad\u7ec3\u5931\u8d25\u9875\u4e0e\u8bad\u7ec3\u6210\u529f\u9875\u5171\u7528 success_text \u533a\u57df(\u6210\u529f\u663e\u793a\u52a0\u6210, \u5931\u8d25\u663e\u793a
+    # "\u8bad\u7ec3\u5931\u8d25!"), \u90fd\u662f\u7ed3\u7b97\u9875\u3001\u70b9\u7ee7\u7eed\u63a8\u8fdb\u65b9\u5f0f\u4e00\u81f4 \u2192 \u4e00\u5e76\u5f52 post_training,
+    # \u5426\u5219\u8bad\u7ec3\u5931\u8d25\u9875\u843d\u5168\u626b\u88ab\u8bef\u5224\u6210\u5feb\u8f6c\u8bbe\u5b9a pause \u6b7b\u5faa\u73af(2026-06-14 \u91c7\u96c6\u53d1\u73b0)\u3002
+    return contains_any_text(post_text, ("\u8bad\u7ec3\u6210\u529f", "\u8bad\u7ec3\u5931\u8d25", "\u529b\u91cf\u8bad\u7ec3", "\u4f53\u529b\u8bad\u7ec3", "\u63d0\u5347"))
 
 
 def _has_event_choice_signature(anchors: dict[str, str]) -> bool:
