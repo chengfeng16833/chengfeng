@@ -110,6 +110,18 @@ logger = get_logger("live_loop")
 # blindly into the screen that comes next.
 _ADVANCE_SCREENS = frozenset({Screen.DIALOGUE, Screen.POST_TRAINING, Screen.REWARD, Screen.GOAL_LIST})
 
+# 点固定位即推进的画面(用户洞察 2026-06-14: skip/确认/推进按钮位置全固定,
+# 识别一次后盲点该固定位 → 画面一变就停, 不必每帧重新识别整屏)。burst 异动
+# 即停 = 点击数最小 + 推进最快。严格白名单: 只含"点单一固定按钮就推进、不读
+# 内容选择"的画面; training_hub(委托/休息分支)与一切要读内容决策的画面
+# (training_select/event/relic/shop/commission/blessing/filter)绝不在内。
+_BURST_SCREENS = frozenset({
+    Screen.DIALOGUE, Screen.POST_TRAINING, Screen.REWARD, Screen.GOAL_LIST,
+    Screen.BATTLE_RESULT, Screen.NEW_BLESSING, Screen.FINAL_RESULT,
+    Screen.JOURNEY_END, Screen.GAME_MENU, Screen.CONFIRM_DIALOG,
+    Screen.SKIP_BATTLE_CONFIRM, Screen.MAIN_SCREEN, Screen.MAIN_MENU_PANEL,
+})
+
 
 # ---------------------------------------------------------------------------
 # 帧哈希(提速3): 画面和上一帧几乎一样时跳过整屏 OCR 分类, 复用上帧结果。
@@ -968,11 +980,16 @@ def main() -> None:
             #      盖住时该点颜色必变, 点位级灵敏, 先于整屏判据止手;
             #   2) 整屏哈希 >8% — 新画面/选项出现的兜底(原判据保留)。
             if (
-                observation.screen in (Screen.DIALOGUE, Screen.REWARD, Screen.POST_TRAINING, Screen.GOAL_LIST)
+                observation.screen in _BURST_SCREENS
                 and args.execute
                 and action.kind == "click"
                 and result.executed
             ):
+                # burst 内单点(repeat=1): 原来复用 repeat=3 的 screen_action →
+                # 每轮点 3 下 ×14 轮 = 最多 42 下纯浪费; burst 本身就是连点机制,
+                # 单点足矣(用户 2026-06-14: 减少点击次数)。"点单按钮即推进"的
+                # 画面(确认/菜单/主界面)第一轮抓帧就检测到切换 → 只点 1 次即退。
+                burst_action = replace(screen_action, repeat=1)
                 burst_base_color = (
                     _point_color(screenshot, client_window, result.point)
                     if result.point is not None
@@ -995,7 +1012,7 @@ def main() -> None:
                         diff = sum(1 for a, b in zip(qsig, frame_sig) if abs(a - b) > 10) / len(qsig)
                         if diff > 0.08:
                             break
-                    executor.execute(screen_action)
+                    executor.execute(burst_action)
                 continue
 
             # Advance screens (reward / dialogue / post-training) re-capture fast so
