@@ -3,21 +3,24 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 REM ============================================================
-REM  笔记本一键准备环境
+REM  一键准备环境 (台式机/笔记本通用)
 REM  - 自动定位本仓库目录(脚本所在目录), 无需手改路径
-REM  - 自动探测可用的 Python
+REM  - 自动探测 Python (先 Codex 自带运行时, 再回退 PATH)
 REM  - 安装 requirements.txt (优先清华镜像, 失败回退官方源)
 REM  - 跑单元测试确认环境就绪
 REM ============================================================
 
-REM 切到脚本所在目录(即仓库根目录)
 cd /d "%~dp0"
 echo [信息] 仓库目录: %cd%
 echo.
 
 REM ---- 探测 Python ----
 set "PY="
-where python >nul 2>nul && set "PY=python"
+set "CODEX_PY=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+if exist "%CODEX_PY%" set "PY="%CODEX_PY%""
+if not defined PY (
+    where python >nul 2>nul && set "PY=python"
+)
 if not defined PY (
     where py >nul 2>nul && set "PY=py -3"
 )
@@ -67,6 +70,6 @@ if errorlevel 1 (
 echo.
 echo ============================================================
 echo  [完成] 全部测试通过, 环境就绪!
-echo  下一步: 双击 "笔记本-启动控制台.bat" 打开 GUI
+echo  下一步: 双击 "启动控制台.bat" 打开 GUI
 echo ============================================================
 pause
