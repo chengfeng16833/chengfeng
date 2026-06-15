@@ -1,5 +1,12 @@
+# 必需(主流程依赖)
 pillow
 pyautogui==0.9.54
 paddleocr==3.5.0
 paddlepaddle==3.2.2
+paddlex==3.5.2
 numpy==2.3.5
+
+# 可选(缺失会优雅降级, 不影响主流程能跑)
+winsdk==1.0.0b10                   # WinRT 快 OCR(--ocr-engine hybrid 提速 35-60x); 缺则自动用纯 Paddle
+keyboard                          # F12 暂停热键; 缺则只能用"鼠标甩四角"急停(仍可用)
+opencv-contrib-python==4.10.0.84  # 部分视觉/颜色检测; 缺则走 PIL 回退
